@@ -18,6 +18,7 @@ from typing import Optional, Dict, Any, List, Tuple
 import re
 
 import httpx
+import unicodedata
 from telegram_broadcaster import broadcast_telegram_message, format_alert_message
 
 BASE_DIR = Path(__file__).parent
@@ -25,6 +26,13 @@ CONFIG_PATH = BASE_DIR / "config.json"
 DB_PATH = BASE_DIR / "orders.db"
 DEFAULT_PORTAL_URL = "https://icp.administracionelectronica.gob.es/icpplus/index.html"
 DEFAULT_BASE_URL = "https://icp.administracionelectronica.gob.es/icpplus"
+
+
+def normalize_text(text: str) -> str:
+    """Normalize Spanish text by stripping accents, tildes, and lowercasing."""
+    if not text:
+        return ""
+    return unicodedata.normalize('NFKD', str(text)).encode('ASCII', 'ignore').decode('utf-8').lower().strip()
 
 USER_AGENT = (
     "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
@@ -116,7 +124,12 @@ class FastPortalProber:
     """Ultra-fast HTTP/2 connection-pooled scanner for Cita Previa."""
 
     def __init__(self, proxy: Optional[str] = None):
-        self.proxy = proxy
+        self.proxy = (
+            proxy
+            or os.environ.get("PROXY_URL")
+            or os.environ.get("HTTPS_PROXY")
+            or os.environ.get("HTTP_PROXY")
+        )
         self.client: Optional[httpx.AsyncClient] = None
 
     async def get_client(self) -> httpx.AsyncClient:
@@ -135,9 +148,10 @@ class FastPortalProber:
             await self.client.aclose()
 
     def resolve_province_code(self, province_name: str) -> Optional[str]:
-        cleaned = province_name.lower().strip()
+        cleaned = normalize_text(province_name)
         for k, v in PROVINCE_CODES.items():
-            if k in cleaned or cleaned in k:
+            k_norm = normalize_text(k)
+            if k_norm == cleaned or k_norm in cleaned or cleaned in k_norm:
                 return v
         return None
 
