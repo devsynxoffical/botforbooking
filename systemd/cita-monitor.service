@@ -1,0 +1,17 @@
+[Unit]
+Description=Cita Previa Live Appointment Fast Monitor & Telegram Broadcaster
+After=network.target
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=/opt/cita-bot
+ExecStart=/opt/cita-bot/.venv/bin/python /opt/cita-bot/fast_monitor.py --interval 3.0
+Restart=always
+RestartSec=3
+StandardOutput=journal
+StandardError=journal
+Environment=PYTHONUNBUFFERED=1
+
+[Install]
+WantedBy=multi-user.target

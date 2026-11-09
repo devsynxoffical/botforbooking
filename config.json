@@ -1,0 +1,21 @@
+{
+  "province": "Barcelona",
+  "procedure_keyword": "POLICIA-TOMA DE HUELLA",
+  "document_type": "NIE",
+  "document_number": "Z5068943R",
+  "full_name": "MD MUSTAK AHMED",
+  "year_of_birth": "1990",
+  "country_of_nationality": "BANGLADESH",
+  "phone": "698293839",
+  "email": "mdmus@postgot.com",
+  "portal_url": "https://icp.administracionelectronica.gob.es/icpplus/index.html",
+  "telegram": {
+    "enabled": false,
+    "bot_token": "",
+    "chat_id": ""
+  },
+  "data_retention": {
+    "auto_delete_completed": true,
+    "retention_hours": 24
+  }
+}

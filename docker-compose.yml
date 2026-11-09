@@ -1,0 +1,14 @@
+version: "3.8"
+
+services:
+  cita-bot:
+    build: .
+    container_name: cita_live_monitor
+    restart: always
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./orders.db:/app/orders.db
+      - ./config.json:/app/config.json
+    environment:
+      - PYTHONUNBUFFERED=1
