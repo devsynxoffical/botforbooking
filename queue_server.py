@@ -68,6 +68,16 @@ def get_db():
     return conn
 
 
+MAJOR_SPANISH_PROVINCES = [
+    "Madrid", "Barcelona", "Valencia", "Alicante", "Sevilla",
+    "Málaga", "Murcia", "Baleares", "Las Palmas", "Santa Cruz de Tenerife",
+    "Zaragoza", "Bizkaia", "Tarragona", "Girona", "Granada",
+    "A Coruña", "Toledo", "Almería", "Cádiz", "Córdoba",
+    "Navarra", "Asturias", "Castellón", "Cantabria", "Valladolid",
+    "Gipuzkoa", "Lleida", "Huelva", "Jaén", "Badajoz"
+]
+
+
 def init_db():
     with get_db() as conn:
         conn.execute("""
@@ -114,18 +124,18 @@ def init_db():
                 created_at TEXT NOT NULL
             )
         """)
-        # Seed default monitor if empty
+        # Seed all 30 major Spanish provinces if empty
         cur = conn.cursor()
         cur.execute("SELECT COUNT(*) as cnt FROM monitors")
         if cur.fetchone()["cnt"] == 0:
             config = load_config()
-            prov = config.get("province", "Barcelona")
-            proc = config.get("procedure_keyword", "POLICIA-TOMA DE HUELLA")
+            default_proc = config.get("procedure_keyword", "POLICIA-TOMA DE HUELLA")
             now = datetime.datetime.now(datetime.timezone.utc).isoformat()
-            conn.execute(
-                "INSERT INTO monitors (province, procedure, is_active, interval_seconds, created_at) VALUES (?, ?, 1, 60, ?)",
-                (prov, proc, now)
-            )
+            for prov in MAJOR_SPANISH_PROVINCES:
+                conn.execute(
+                    "INSERT INTO monitors (province, procedure, is_active, interval_seconds, created_at) VALUES (?, ?, 1, 60, ?)",
+                    (prov, default_proc, now)
+                )
         conn.commit()
 
 
@@ -499,16 +509,6 @@ def trigger_test_broadcast():
 # ==========================================
 # API Routes: Monitors & Live Scanner
 # ==========================================
-MAJOR_SPANISH_PROVINCES = [
-    "Madrid", "Barcelona", "Valencia", "Alicante", "Sevilla",
-    "Málaga", "Murcia", "Baleares", "Las Palmas", "Santa Cruz de Tenerife",
-    "Zaragoza", "Bizkaia", "Tarragona", "Girona", "Granada",
-    "A Coruña", "Toledo", "Almería", "Cádiz", "Córdoba",
-    "Navarra", "Asturias", "Castellón", "Cantabria", "Valladolid",
-    "Gipuzkoa", "Lleida", "Huelva", "Jaén", "Badajoz"
-]
-
-
 @app.get("/api/live-status")
 def get_live_status():
     with get_db() as conn:

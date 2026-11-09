@@ -123,7 +123,7 @@ class FastPortalProber:
         if self.client is None or self.client.is_closed:
             self.client = httpx.AsyncClient(
                 headers=HEADERS,
-                timeout=httpx.Timeout(10.0, connect=5.0),
+                timeout=httpx.Timeout(20.0, connect=12.0),
                 follow_redirects=True,
                 http2=HAS_HTTP2,
                 proxy=self.proxy
@@ -159,6 +159,12 @@ class FastPortalProber:
             }
 
         try:
+            # Step 0: Warm up session and acquire JSESSIONID cookie
+            try:
+                await client.get(DEFAULT_PORTAL_URL)
+            except Exception:
+                pass
+
             # Step 1: Open session & select province
             step1_url = f"{DEFAULT_BASE_URL}/citar"
             step1_data = {
