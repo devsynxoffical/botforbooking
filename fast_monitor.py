@@ -333,16 +333,20 @@ async def run_fast_monitor_daemon(interval_sec: float = 3.0):
                 await asyncio.sleep(10)
                 continue
 
-            # Run checks concurrently across all targets
-            tasks = [
-                process_single_monitor(
-                    m,
-                    prober,
-                    config,
-                    cooldown_minutes=config.get("cooldown_minutes", 10)
-                )
-                for m in monitors
-            ]
+            # Run checks with bounded concurrency (up to 4 concurrent checks)
+            sem = asyncio.Semaphore(4)
+
+            async def bounded_check(m):
+                async with sem:
+                    await process_single_monitor(
+                        m,
+                        prober,
+                        config,
+                        cooldown_minutes=config.get("cooldown_minutes", 10)
+                    )
+                    await asyncio.sleep(0.2)
+
+            tasks = [bounded_check(m) for m in monitors]
             await asyncio.gather(*tasks)
 
             cycle_elapsed = time.time() - t_cycle_start

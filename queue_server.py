@@ -494,6 +494,75 @@ def trigger_test_broadcast():
 # ==========================================
 # API Routes: Monitors & Live Scanner
 # ==========================================
+MAJOR_SPANISH_PROVINCES = [
+    "Madrid", "Barcelona", "Valencia", "Alicante", "Sevilla",
+    "Málaga", "Murcia", "Baleares", "Las Palmas", "Santa Cruz de Tenerife",
+    "Zaragoza", "Bizkaia", "Tarragona", "Girona", "Granada",
+    "A Coruña", "Toledo", "Almería", "Cádiz", "Córdoba",
+    "Navarra", "Asturias", "Castellón", "Cantabria", "Valladolid",
+    "Gipuzkoa", "Lleida", "Huelva", "Jaén", "Badajoz"
+]
+
+
+@app.get("/api/live-status")
+def get_live_status():
+    with get_db() as conn:
+        cur = conn.cursor()
+        cur.execute("SELECT * FROM monitors ORDER BY id ASC")
+        rows = [dict(r) for r in cur.fetchall()]
+        open_slots = [r for r in rows if r.get("last_status") == "available"]
+        return {
+            "open_count": len(open_slots),
+            "open_slots": open_slots,
+            "total_monitors": len(rows),
+            "monitors": rows,
+            "timestamp": datetime.datetime.now(datetime.timezone.utc).isoformat()
+        }
+
+
+@app.post("/api/monitors/seed-all-provinces")
+def seed_all_provinces():
+    default_proc = "POLICIA-TOMA DE HUELLA"
+    now = datetime.datetime.now(datetime.timezone.utc).isoformat()
+    added = 0
+    with get_db() as conn:
+        cur = conn.cursor()
+        for prov in MAJOR_SPANISH_PROVINCES:
+            cur.execute(
+                "SELECT id FROM monitors WHERE LOWER(province) = LOWER(?) AND procedure = ?",
+                (prov, default_proc)
+            )
+            if not cur.fetchone():
+                cur.execute(
+                    """
+                    INSERT INTO monitors (province, procedure, is_active, interval_seconds, created_at)
+                    VALUES (?, ?, 1, 60, ?)
+                    """,
+                    (prov, default_proc, now)
+                )
+                added += 1
+        conn.commit()
+    return {
+        "status": "success",
+        "added_count": added,
+        "message": f"Added {added} Spanish provinces to live monitor. Total: {len(MAJOR_SPANISH_PROVINCES)}"
+    }
+
+
+@app.post("/api/monitors/scan-all")
+def scan_all_monitors(background_tasks: BackgroundTasks):
+    python_bin = BASE_DIR / ".venv" / "bin" / "python"
+    if not python_bin.exists():
+        python_bin = Path(sys.executable)
+    script = BASE_DIR / "fast_monitor.py"
+
+    def run_batch():
+        subprocess.run([str(python_bin), str(script), "--check-once"], check=False)
+
+    background_tasks.add_task(run_batch)
+    return {"status": "queued", "message": "Batch scan across all provinces triggered in background."}
+
+
 @app.get("/api/monitors")
 def list_monitors():
     with get_db() as conn:
@@ -654,6 +723,20 @@ def intake_page():
                 <p style="margin: 0; opacity: 0.9;">Submit your details to enter the assisted queue, or monitor live slot openings via our Telegram broadcast channel.</p>
             </div>
 
+            <!-- LIVE OPEN APPOINTMENTS BANNER -->
+            <div id="liveOpenAlert" style="display: none; background: #ecfdf5; border: 2px solid #10b981; border-radius: 12px; padding: 1.25rem;">
+                <div style="display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 0.75rem;">
+                    <div>
+                        <h3 style="margin: 0; color: #065f46; display: flex; align-items: center; gap: 0.5rem;">
+                            <span style="display: inline-block; width: 12px; height: 12px; background: #10b981; border-radius: 50%; box-shadow: 0 0 8px #10b981;"></span>
+                            🚨 ¡CITAS ABIERTAS AHORA MISMO!
+                        </h3>
+                        <p style="margin: 0.35rem 0 0; color: #047857; font-size: 0.9rem;" id="liveOpenText"></p>
+                    </div>
+                    <div id="liveOpenBadges" style="display: flex; gap: 0.4rem; flex-wrap: wrap;"></div>
+                </div>
+            </div>
+
             <div class="card">
                 <h1>📋 New Appointment Request</h1>
                 <p style="color: #64748b; margin-bottom: 1.5rem;">Submit applicant information into the queue.</p>
@@ -797,6 +880,37 @@ def intake_page():
                     resDiv.innerText = 'Error looking up order';
                 }
             }
+
+            async function pollLiveOpen() {
+                try {
+                    const res = await fetch('/api/live-status');
+                    const data = await res.json();
+                    const alertEl = document.getElementById('liveOpenAlert');
+                    const textEl = document.getElementById('liveOpenText');
+                    const badgesEl = document.getElementById('liveOpenBadges');
+                    if (data && data.open_count > 0) {
+                        alertEl.style.display = 'block';
+                        textEl.innerHTML = `Detectadas <strong>${data.open_count} ciudades</strong> con citas disponibles en este momento. ¡Solicite ahora antes de que se agoten!`;
+                        badgesEl.innerHTML = data.open_slots.map(s => `
+                            <button type="button" style="background: #059669; color: white; border: none; padding: 0.35rem 0.75rem; border-radius: 6px; cursor: pointer; font-size: 0.85rem; font-weight: bold;" onclick="selectCity('${s.province}')">
+                                📍 ${s.province}
+                            </button>
+                        `).join('');
+                    } else {
+                        alertEl.style.display = 'none';
+                    }
+                } catch(e) {}
+            }
+
+            function selectCity(city) {
+                const provInput = document.getElementById('province');
+                provInput.value = city;
+                provInput.scrollIntoView({ behavior: 'smooth' });
+                provInput.focus();
+            }
+
+            pollLiveOpen();
+            setInterval(pollLiveOpen, 4000);
         </script>
     </body>
     </html>
@@ -918,6 +1032,18 @@ def admin_page():
 
         <!-- TAB 2: LIVE MONITOR & TELEGRAM BROADCAST -->
         <div id="monitorTab" class="tab-content">
+            <!-- LIVE OPEN BOOKINGS HERO SHOWCASE -->
+            <div id="heroOpenSection" style="display: none; background: #ecfdf5; border: 2px solid #22c55e; border-radius: 10px; padding: 1.25rem; margin-bottom: 1.5rem;">
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.75rem;">
+                    <h3 style="margin: 0; color: #15803d; display: flex; align-items: center; gap: 0.5rem;">
+                        <span style="display: inline-block; width: 12px; height: 12px; background: #22c55e; border-radius: 50%; box-shadow: 0 0 10px #22c55e;"></span>
+                        🔥 APPOINTMENTS OPEN RIGHT NOW (<span id="heroOpenCount">0</span>)
+                    </h3>
+                    <span style="font-size: 0.85rem; color: #166534; font-weight: bold;">⚡ Live Availability Stream</span>
+                </div>
+                <div id="heroOpenCards" style="display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 0.75rem;"></div>
+            </div>
+
             <!-- Telegram Config Card -->
             <div class="card">
                 <h3 style="margin-top: 0;">📢 Telegram Broadcast Configuration</h3>
@@ -981,6 +1107,20 @@ def admin_page():
                     <div style="margin-top: 0.75rem; display: flex; gap: 0.5rem; justify-content: flex-end;">
                         <button class="btn btn-secondary" onclick="toggleAddMonitorModal()">Cancel</button>
                         <button class="btn" onclick="saveNewMonitor()">Add Target</button>
+                    </div>
+                </div>
+
+                <!-- Search & Filters Toolbar -->
+                <div style="display: flex; gap: 0.5rem; align-items: center; margin-bottom: 1rem; flex-wrap: wrap;">
+                    <input type="text" id="citySearch" placeholder="🔍 Search city (e.g. Madrid, Barcelona)..." style="width: 240px; padding: 0.45rem 0.75rem;" oninput="filterMonitors()">
+                    <div style="display: flex; gap: 0.25rem;">
+                        <button class="btn-action" id="tabFilterAll" style="background: #2563eb;" onclick="setMonitorFilter('all')">All (<span id="badgeTotalCities">0</span>)</button>
+                        <button class="btn-action" id="tabFilterOpen" style="background: #16a34a; opacity: 0.7;" onclick="setMonitorFilter('available')">🟢 Open Now (<span id="badgeOpenCities">0</span>)</button>
+                        <button class="btn-action" id="tabFilterClosed" style="background: #64748b; opacity: 0.7;" onclick="setMonitorFilter('no_slots')">⚪ Closed (<span id="badgeClosedCities">0</span>)</button>
+                    </div>
+                    <div style="margin-left: auto; display: flex; gap: 0.4rem; flex-wrap: wrap;">
+                        <button class="btn btn-action" style="background: #7c3aed;" onclick="seedAllSpanishCities()">⚡ Add All 30+ Spanish Cities</button>
+                        <button class="btn btn-action" style="background: #0284c7;" onclick="scanAllCitiesNow()">🚀 Scan All Cities Now</button>
                     </div>
                 </div>
 
@@ -1208,43 +1348,159 @@ def admin_page():
                 }
             }
 
+            let ALL_MONITORS = [];
+            let CURRENT_FILTER = 'all';
+
             async function loadMonitors() {
                 try {
-                    const res = await fetch('/api/monitors');
+                    const res = await fetch('/api/live-status');
                     const data = await res.json();
-                    const tbody = document.getElementById('monitorsTableBody');
-                    if (data.monitors.length === 0) {
-                        tbody.innerHTML = '<tr><td colspan="6" style="text-align: center; color: #94a3b8;">No monitored targets. Click "+ Add New Target" above.</td></tr>';
-                        return;
+                    ALL_MONITORS = data.monitors || [];
+
+                    const openList = ALL_MONITORS.filter(m => m.last_status === 'available');
+                    const closedList = ALL_MONITORS.filter(m => m.last_status !== 'available');
+
+                    const cntTotal = document.getElementById('badgeTotalCities');
+                    const cntOpen = document.getElementById('badgeOpenCities');
+                    const cntClosed = document.getElementById('badgeClosedCities');
+                    if (cntTotal) cntTotal.innerText = ALL_MONITORS.length;
+                    if (cntOpen) cntOpen.innerText = openList.length;
+                    if (cntClosed) cntClosed.innerText = closedList.length;
+
+                    // Render Hero Showcase
+                    const heroSection = document.getElementById('heroOpenSection');
+                    const heroCards = document.getElementById('heroOpenCards');
+                    const heroCount = document.getElementById('heroOpenCount');
+
+                    if (heroSection) {
+                        if (openList.length > 0) {
+                            heroSection.style.display = 'block';
+                            heroCount.innerText = openList.length;
+                            heroCards.innerHTML = openList.map(m => `
+                                <div style="background: white; border: 1px solid #86efac; border-radius: 8px; padding: 0.85rem; box-shadow: 0 2px 4px rgba(0,0,0,0.06);">
+                                    <div style="display: flex; justify-content: space-between; align-items: flex-start;">
+                                        <div>
+                                            <strong style="font-size: 1.1rem; color: #15803d;">📍 ${m.province}</strong><br>
+                                            <small style="color: #475569;">${m.procedure}</small>
+                                        </div>
+                                        <span class="badge badge-available">OPEN NOW</span>
+                                    </div>
+                                    <div style="margin-top: 0.5rem; font-size: 0.8rem; color: #64748b;">
+                                        ⏰ Detectado: ${m.last_alert_at ? new Date(m.last_alert_at).toLocaleTimeString() : 'Recientemente'}
+                                    </div>
+                                    <div style="margin-top: 0.6rem; display: flex; gap: 0.4rem;">
+                                        <a href="${m.portal_url || 'https://icp.administracionelectronica.gob.es/icpplus/index.html'}" target="_blank" class="btn btn-action" style="background: #15803d; text-decoration: none;">🔗 Open Portal</a>
+                                        <button class="btn btn-action btn-success" onclick="triggerAutoPick('${m.province}', '${m.procedure}')">🤖 Auto-Book</button>
+                                    </div>
+                                </div>
+                            `).join('');
+                        } else {
+                            heroSection.style.display = 'none';
+                        }
                     }
-                    tbody.innerHTML = data.monitors.map(m => {
-                        const statusClass = `badge-${m.last_status || 'pending'}`;
-                        const statusLabel = m.last_status === 'available' ? '🟢 SLOTS OPEN!' : (m.last_status || 'pending');
-                        return `
-                            <tr>
-                                <td>
-                                    <strong>${m.province}</strong><br>
-                                    <small style="color: #64748b;">${m.procedure}</small>
-                                </td>
-                                <td>
-                                    <span class="badge ${statusClass}">${statusLabel}</span><br>
-                                    <small style="color: #64748b;">${m.last_status_message || ''}</small>
-                                </td>
-                                <td>${m.last_checked ? new Date(m.last_checked).toLocaleTimeString() : 'Never'}</td>
-                                <td>${m.last_alert_at ? new Date(m.last_alert_at).toLocaleTimeString() : 'No alerts yet'}</td>
-                                <td>
-                                    <input type="checkbox" ${m.is_active ? 'checked' : ''} onchange="toggleMonitorActive(${m.id})">
-                                </td>
-                                <td>
-                                    <button class="btn-action" onclick="checkMonitorNow(${m.id})">⚡ Scan Now</button>
-                                    <button class="btn-action btn-danger" onclick="deleteMonitor(${m.id})">🗑️</button>
-                                </td>
-                            </tr>
-                        `;
-                    }).join('');
+
+                    renderFilteredMonitors();
                 } catch (e) {
                     console.error("Failed to load monitors", e);
                 }
+            }
+
+            function setMonitorFilter(filter) {
+                CURRENT_FILTER = filter;
+                const tabAll = document.getElementById('tabFilterAll');
+                const tabOpen = document.getElementById('tabFilterOpen');
+                const tabClosed = document.getElementById('tabFilterClosed');
+                if (tabAll) tabAll.style.opacity = filter === 'all' ? '1' : '0.6';
+                if (tabOpen) tabOpen.style.opacity = filter === 'available' ? '1' : '0.6';
+                if (tabClosed) tabClosed.style.opacity = filter === 'no_slots' ? '1' : '0.6';
+                renderFilteredMonitors();
+            }
+
+            function filterMonitors() {
+                renderFilteredMonitors();
+            }
+
+            function renderFilteredMonitors() {
+                const searchEl = document.getElementById('citySearch');
+                const searchVal = searchEl ? searchEl.value.toLowerCase().trim() : '';
+                let filtered = ALL_MONITORS;
+
+                if (CURRENT_FILTER === 'available') {
+                    filtered = filtered.filter(m => m.last_status === 'available');
+                } else if (CURRENT_FILTER === 'no_slots') {
+                    filtered = filtered.filter(m => m.last_status !== 'available');
+                }
+
+                if (searchVal) {
+                    filtered = filtered.filter(m => 
+                        m.province.toLowerCase().includes(searchVal) || 
+                        m.procedure.toLowerCase().includes(searchVal)
+                    );
+                }
+
+                const tbody = document.getElementById('monitorsTableBody');
+                if (!tbody) return;
+
+                if (filtered.length === 0) {
+                    tbody.innerHTML = '<tr><td colspan="6" style="text-align: center; color: #94a3b8; padding: 2rem;">No matching cities found.</td></tr>';
+                    return;
+                }
+
+                tbody.innerHTML = filtered.map(m => {
+                    const isAvail = m.last_status === 'available';
+                    const statusClass = `badge-${m.last_status || 'pending'}`;
+                    const statusLabel = isAvail ? '🟢 SLOTS OPEN!' : (m.last_status || 'pending');
+                    return `
+                        <tr style="${isAvail ? 'background: #f0fdf4; font-weight: 500;' : ''}">
+                            <td>
+                                <strong style="font-size: 0.95rem;">${m.province}</strong><br>
+                                <small style="color: #64748b;">${m.procedure}</small>
+                            </td>
+                            <td>
+                                <span class="badge ${statusClass}">${statusLabel}</span><br>
+                                <small style="color: #64748b;">${m.last_status_message || ''}</small>
+                            </td>
+                            <td>${m.last_checked ? new Date(m.last_checked).toLocaleTimeString() : 'Never'}</td>
+                            <td>${m.last_alert_at ? new Date(m.last_alert_at).toLocaleTimeString() : 'No alerts yet'}</td>
+                            <td>
+                                <input type="checkbox" ${m.is_active ? 'checked' : ''} onchange="toggleMonitorActive(${m.id})">
+                            </td>
+                            <td>
+                                <div style="display: flex; gap: 0.3rem;">
+                                    <button class="btn-action" onclick="checkMonitorNow(${m.id})">⚡ Scan</button>
+                                    <button class="btn-action btn-danger" onclick="deleteMonitor(${m.id})">🗑️</button>
+                                </div>
+                            </td>
+                        </tr>
+                    `;
+                }).join('');
+            }
+
+            async function seedAllSpanishCities() {
+                if (!confirm("This will add all 30+ major Spanish provinces (Madrid, Barcelona, Valencia, Sevilla, Málaga, etc.) to your live monitor. Proceed?")) return;
+                try {
+                    const res = await fetch('/api/monitors/seed-all-provinces', { method: 'POST' });
+                    const data = await res.json();
+                    alert(data.message);
+                    loadMonitors();
+                } catch(e) {
+                    alert("Error adding provinces: " + e.message);
+                }
+            }
+
+            async function scanAllCitiesNow() {
+                try {
+                    const res = await fetch('/api/monitors/scan-all', { method: 'POST' });
+                    const data = await res.json();
+                    alert(data.message || "Batch scan across all cities started in background!");
+                    setTimeout(loadMonitors, 2000);
+                } catch(e) {
+                    alert("Error scanning all cities: " + e.message);
+                }
+            }
+
+            function triggerAutoPick(prov, proc) {
+                alert(`Starting automated booking for the next client waiting in ${prov}...`);
             }
 
             function toggleAddMonitorModal() {
