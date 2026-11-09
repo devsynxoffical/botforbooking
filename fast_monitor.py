@@ -105,6 +105,13 @@ def update_monitor_status(monitor_id: int, status: str, message: str, alerted: b
         conn.commit()
 
 
+try:
+    import h2
+    HAS_HTTP2 = True
+except ImportError:
+    HAS_HTTP2 = False
+
+
 class FastPortalProber:
     """Ultra-fast HTTP/2 connection-pooled scanner for Cita Previa."""
 
@@ -118,7 +125,7 @@ class FastPortalProber:
                 headers=HEADERS,
                 timeout=httpx.Timeout(10.0, connect=5.0),
                 follow_redirects=True,
-                http2=True,
+                http2=HAS_HTTP2,
                 proxy=self.proxy
             )
         return self.client

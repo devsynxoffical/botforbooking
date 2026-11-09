@@ -55,6 +55,13 @@ def save_config(cfg: dict):
         json.dump(cfg, f, indent=2)
 
 
+def get_python_bin() -> str:
+    venv_py = BASE_DIR / ".venv" / "bin" / "python"
+    if venv_py.exists():
+        return str(venv_py)
+    return sys.executable
+
+
 def get_db():
     conn = sqlite3.connect(DB_PATH)
     conn.row_factory = sqlite3.Row
@@ -388,9 +395,9 @@ def launch_assistant(order_id: str):
         cur.execute("UPDATE orders SET status = 'searching', updated_at = ? WHERE order_id = ?", (now, order_id.upper()))
         conn.commit()
 
-    python_bin = BASE_DIR / ".venv" / "bin" / "python"
+    python_bin = get_python_bin()
     assistant_script = BASE_DIR / "assistant.py"
-    subprocess.Popen([str(python_bin), str(assistant_script)])
+    subprocess.Popen([python_bin, str(assistant_script)])
 
     return {"status": "launched", "order_id": order_id.upper(), "message": "Visible assisted runner launched."}
 
@@ -405,11 +412,9 @@ def auto_book_order(order_id: str):
         if not order:
             raise HTTPException(status_code=404, detail="Order not found")
 
-    python_bin = BASE_DIR / ".venv" / "bin" / "python"
-    if not python_bin.exists():
-        python_bin = Path(sys.executable)
+    python_bin = get_python_bin()
     booker_script = BASE_DIR / "auto_booker.py"
-    subprocess.Popen([str(python_bin), str(booker_script), "--order-id", order_id.upper()])
+    subprocess.Popen([python_bin, str(booker_script), "--order-id", order_id.upper()])
 
     return {"status": "started", "order_id": order_id.upper(), "message": f"Auto-booker started for {order_id.upper()}"}
 
@@ -551,13 +556,11 @@ def seed_all_provinces():
 
 @app.post("/api/monitors/scan-all")
 def scan_all_monitors(background_tasks: BackgroundTasks):
-    python_bin = BASE_DIR / ".venv" / "bin" / "python"
-    if not python_bin.exists():
-        python_bin = Path(sys.executable)
+    python_bin = get_python_bin()
     script = BASE_DIR / "fast_monitor.py"
 
     def run_batch():
-        subprocess.run([str(python_bin), str(script), "--check-once"], check=False)
+        subprocess.run([python_bin, str(script), "--check-once"], check=False)
 
     background_tasks.add_task(run_batch)
     return {"status": "queued", "message": "Batch scan across all provinces triggered in background."}
@@ -623,11 +626,11 @@ def trigger_manual_check(monitor_id: int, background_tasks: BackgroundTasks):
         monitor_data = dict(row)
 
     # Launch check script in background
-    python_bin = BASE_DIR / ".venv" / "bin" / "python"
+    python_bin = get_python_bin()
     script = BASE_DIR / "monitor.py"
 
     def run_check():
-        subprocess.run([str(python_bin), str(script), "--check-once"], check=False)
+        subprocess.run([python_bin, str(script), "--check-once"], check=False)
 
     background_tasks.add_task(run_check)
     return {"status": "queued", "message": f"Scan triggered for {monitor_data['province']} ({monitor_data['procedure']})"}
@@ -654,9 +657,9 @@ def start_monitor_daemon():
     if MONITOR_PROCESS is not None and MONITOR_PROCESS.poll() is None:
         return {"status": "already_running", "pid": MONITOR_PROCESS.pid}
 
-    python_bin = BASE_DIR / ".venv" / "bin" / "python"
-    script = BASE_DIR / "monitor.py"
-    MONITOR_PROCESS = subprocess.Popen([str(python_bin), str(script), "--daemon"])
+    python_bin = get_python_bin()
+    script = BASE_DIR / "fast_monitor.py"
+    MONITOR_PROCESS = subprocess.Popen([python_bin, str(script)])
     return {"status": "started", "pid": MONITOR_PROCESS.pid}
 
 
