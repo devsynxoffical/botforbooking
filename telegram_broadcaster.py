@@ -33,6 +33,38 @@ def format_alert_message(
     return msg
 
 
+def format_booking_confirmation_message(
+    name: str,
+    doc_number: str,
+    province: str,
+    procedure: str,
+    address: str = "Oficina de Extranjería / Comisaría de Policía",
+    appointment_datetime: str = "",
+    justificante_code: str = "",
+    order_id: str = "",
+    custom_time: Optional[str] = None
+) -> str:
+    """
+    Formats the official booking confirmation alert requested by the user.
+    """
+    now_time = custom_time or datetime.datetime.now().strftime("%H:%M:%S")
+    clean_order_id = str(order_id).replace("ORDER-", "").strip()
+
+    date_str = appointment_datetime if appointment_datetime else datetime.datetime.now().strftime("%d/%m/%Y %H:%M")
+    justificante_str = justificante_code if justificante_code else "CONFIRMADA"
+
+    msg = "✅ <b>CITA CONFIRMADA</b> ✅\n\n"
+    msg += f"🙋 <b>{name.upper()} - {doc_number.upper()}</b>\n\n"
+    msg += f"📍 <b>Provincia:</b> {province}\n"
+    msg += f"🪄 <b>Nombre del trámite:</b> {procedure}\n"
+    msg += f"💼 <b>Dirección:</b> {address}\n\n"
+    msg += f"⚠️ <b>Día y hora de la cita:</b> {date_str}\n"
+    msg += f"⚠️ <b>Justificante de cita:</b> <code>{justificante_str}</code> (información detallada)\n\n"
+    msg += f"La inscripción ante el organismo estatal fue realizada por encargo y en nombre de <b>{name.upper()}</b> (o de sus tutores legales) de acuerdo con el contrato de mandato.\n\n"
+    msg += f"[{now_time}] <b>ORDER_ID:</b> <code>{clean_order_id}</code>"
+    return msg
+
+
 def broadcast_telegram_message(
     bot_token: str,
     chat_ids: Union[str, List[str]],

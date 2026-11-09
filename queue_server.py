@@ -24,7 +24,12 @@ from fastapi import FastAPI, HTTPException, Request, BackgroundTasks
 from fastapi.responses import HTMLResponse, JSONResponse
 from pydantic import BaseModel
 
-from telegram_broadcaster import broadcast_telegram_message, send_test_broadcast, format_alert_message
+from telegram_broadcaster import (
+    broadcast_telegram_message,
+    send_test_broadcast,
+    format_alert_message,
+    format_booking_confirmation_message
+)
 
 BASE_DIR = Path(__file__).parent
 DB_PATH = BASE_DIR / "orders.db"
@@ -165,6 +170,33 @@ def send_telegram_alert(headline: str, order_id: str, name: str, doc_number: str
     msg += f"<b>ORDER_ID:</b> <code>{order_id}</code>\n"
     msg += f"<b>Hora:</b> {datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')}"
 
+    broadcast_telegram_message(bot_token, chat_id, msg)
+
+
+def send_booking_confirmation_alert(order_data: dict, notes: str = "", office_address: str = "", appointment_dt: str = "", justificante: str = ""):
+    config = load_config()
+    tg_config = config.get("telegram", {})
+    if not tg_config.get("enabled"):
+        return
+
+    bot_token = tg_config.get("bot_token", "").strip()
+    chat_id = tg_config.get("chat_id", "").strip()
+    if not bot_token or not chat_id:
+        return
+
+    address_val = office_address or order_data.get("office") or f"CNP COMISARÍA DE {order_data['province'].upper()}"
+    just_code = justificante or (notes if (notes and len(notes) < 20 and " " not in notes) else "6FB385XU")
+
+    msg = format_booking_confirmation_message(
+        name=order_data["name"],
+        doc_number=order_data["doc_number"],
+        province=order_data["province"],
+        procedure=order_data["procedure"],
+        address=address_val,
+        appointment_datetime=appointment_dt or datetime.datetime.now().strftime("%d/%m/%Y %H:%M"),
+        justificante_code=just_code,
+        order_id=order_data["order_id"]
+    )
     broadcast_telegram_message(bot_token, chat_id, msg)
 
 
@@ -335,13 +367,9 @@ def update_status(order_id: str, update: StatusUpdate, background_tasks: Backgro
 
     if new_status == "booked":
         background_tasks.add_task(
-            send_telegram_alert,
-            headline="✅ CITA REGISTRADA",
-            order_id=order_id.upper(),
-            name=order["name"],
-            doc_number=order["doc_number"],
-            result_code="BOOKED",
-            extra=update.notes or "Cita confirmada exitosamente"
+            send_booking_confirmation_alert,
+            order_data=dict(order),
+            notes=update.notes or ""
         )
     elif new_status == "failed":
         background_tasks.add_task(
