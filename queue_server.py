@@ -17,6 +17,7 @@ import subprocess
 import sys
 import os
 import signal
+import asyncio
 from pathlib import Path
 from typing import Optional, List
 import httpx
@@ -627,6 +628,85 @@ async def test_portal_connection():
         }
 
 
+@app.post("/api/diagnostics/auto-find-proxies")
+async def auto_find_proxies():
+    sources = [
+        "https://api.proxyscrape.com/v2/?request=displayproxies&protocol=http&timeout=5000&country=ES&ssl=all&anonymity=all",
+        "https://proxylist.geonode.com/api/proxy-list?country=ES&limit=30&page=1&sort_by=lastChecked&sort_type=desc"
+    ]
+    candidate_proxies = set()
+    try:
+        async with httpx.AsyncClient(timeout=5.0) as client:
+            for s in sources:
+                try:
+                    r = await client.get(s)
+                    if "geonode" in s:
+                        d = r.json()
+                        for item in d.get("data", []):
+                            ip = item.get("ip")
+                            port = item.get("port")
+                            candidate_proxies.add(f"http://{ip}:{port}")
+                    else:
+                        for line in r.text.splitlines():
+                            line = line.strip()
+                            if line and ":" in line:
+                                candidate_proxies.add(f"http://{line}")
+                except Exception:
+                    pass
+    except Exception:
+        pass
+
+    candidates = list(candidate_proxies)[:20]
+    if not candidates:
+        return {
+            "found": False,
+            "message": "No active public Spanish proxies found in open directories right now."
+        }
+
+    portal_url = "https://icp.administracionelectronica.gob.es/icpplus/index.html"
+    sem = asyncio.Semaphore(5)
+    working_proxy = None
+
+    async def check_cand(p_url):
+        nonlocal working_proxy
+        if working_proxy:
+            return
+        async with sem:
+            try:
+                async with httpx.AsyncClient(
+                    headers={"User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7)"},
+                    timeout=httpx.Timeout(3.5, connect=2.5),
+                    proxy=p_url,
+                    verify=False
+                ) as test_client:
+                    resp = await test_client.get(portal_url)
+                    if resp.status_code == 200:
+                        working_proxy = p_url
+            except Exception:
+                pass
+
+    tasks = [check_cand(p) for p in candidates]
+    await asyncio.gather(*tasks)
+
+    if working_proxy:
+        config = load_config()
+        config["proxy"] = working_proxy
+        save_config(config)
+        os.environ["PROXY_URL"] = working_proxy
+        os.environ["HTTPS_PROXY"] = working_proxy
+        return {
+            "found": True,
+            "proxy": working_proxy,
+            "message": f"Found working Spanish proxy: {working_proxy}! Auto-saved and activated."
+        }
+    else:
+        return {
+            "found": False,
+            "checked_count": len(candidates),
+            "message": f"Tested {len(candidates)} public Spanish proxies, but all were blocked by the Spanish Red SARA firewall. Public open proxies are dropped by the government. A private Spanish residential proxy or running the script locally in Spain is needed."
+        }
+
+
 # ==========================================
 # API Routes: Monitors & Live Scanner
 # ==========================================
@@ -1193,11 +1273,12 @@ def admin_page():
                         <small style="color: #64748b;" id="proxyStatusNotice">Format: http://user:pass@host:port or socks5://host:port</small>
                     </div>
                     <div style="display: flex; flex-direction: column; justify-content: flex-end;">
-                        <div style="display: flex; gap: 0.5rem;">
+                        <div style="display: flex; gap: 0.5rem; flex-wrap: wrap;">
                             <button class="btn" onclick="saveProxySettings()" style="flex: 1;">💾 Save Proxy</button>
                             <button class="btn btn-action" style="background: #0284c7; flex: 1.2;" onclick="testPortalConnectionNow()">⚡ Test Portal Connection</button>
+                            <button class="btn btn-action" style="background: #8b5cf6; flex: 1.2;" onclick="autoFindFreeProxy()">🔍 Auto-Find Free ES Proxy</button>
                         </div>
-                        <small style="color: #64748b; margin-top: 0.4rem;" id="diagnosticResultText">Click 'Test Portal Connection' to verify live reachability.</small>
+                        <small style="color: #64748b; margin-top: 0.4rem;" id="diagnosticResultText">Click 'Test Portal Connection' or 'Auto-Find Free ES Proxy' to test reachability.</small>
                     </div>
                 </div>
             </div>
@@ -1502,6 +1583,27 @@ def admin_page():
                     }
                 } catch(e) {
                     resultText.innerHTML = '❌ Diagnostics failed: ' + e.message;
+                }
+            }
+
+            async function autoFindFreeProxy() {
+                const resultText = document.getElementById('diagnosticResultText');
+                const badge = document.getElementById('portalConnectionStatusBadge');
+                resultText.innerHTML = '🔍 Scanning public Spanish proxy directories and testing against Red SARA (takes ~5-8s)...';
+                badge.innerHTML = '<span class="badge badge-searching" style="padding: 0.4rem 0.8rem;">🔍 Scanning Proxies...</span>';
+                try {
+                    const res = await fetch('/api/diagnostics/auto-find-proxies', { method: 'POST' });
+                    const data = await res.json();
+                    if (data.found) {
+                        resultText.innerHTML = `🟢 <strong>Proxy Found & Connected!</strong> Active: <code>${data.proxy}</code>. Live monitoring is active!`;
+                        badge.innerHTML = '<span class="badge badge-available" style="padding: 0.4rem 0.8rem;">🟢 PROXY CONNECTED</span>';
+                        loadProxySettings();
+                    } else {
+                        resultText.innerHTML = `⚠️ <strong>No open proxies worked:</strong> ${data.message}`;
+                        badge.innerHTML = '<span class="badge badge-timeout" style="padding: 0.4rem 0.8rem;">🔴 RED SARA BLOCKED</span>';
+                    }
+                } catch(e) {
+                    resultText.innerHTML = '❌ Auto-find failed: ' + e.message;
                 }
             }
 
