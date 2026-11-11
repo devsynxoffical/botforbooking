@@ -4,4 +4,7 @@ __pycache__/
 .DS_Store
 *.db
 confirmations/
+uploaded_certs/
+*.p12
+*.pfx
 /tmp/cita_*

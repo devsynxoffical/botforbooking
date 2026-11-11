@@ -99,12 +99,22 @@ def init_db():
                 province TEXT NOT NULL,
                 office TEXT,
                 procedure TEXT NOT NULL,
+                birth_date TEXT,
+                birth_country TEXT,
+                card_expiry_date TEXT,
+                certificate_path TEXT,
+                certificate_password TEXT,
                 status TEXT NOT NULL DEFAULT 'waiting',
                 notes TEXT,
                 created_at TEXT NOT NULL,
                 updated_at TEXT NOT NULL
             )
         """)
+        for col in ["birth_date", "birth_country", "card_expiry_date", "certificate_path", "certificate_password"]:
+            try:
+                conn.execute(f"ALTER TABLE orders ADD COLUMN {col} TEXT")
+            except sqlite3.OperationalError:
+                pass
         conn.execute("""
             CREATE TABLE IF NOT EXISTS monitors (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -214,6 +224,12 @@ class OrderCreate(BaseModel):
     province: str
     office: Optional[str] = ""
     procedure: str
+    birth_date: Optional[str] = None
+    birth_country: Optional[str] = None
+    card_expiry_date: Optional[str] = None
+    certificate_b64: Optional[str] = None
+    certificate_filename: Optional[str] = None
+    certificate_password: Optional[str] = None
 
 
 class StatusUpdate(BaseModel):
@@ -276,19 +292,48 @@ def create_order(order: OrderCreate, background_tasks: BackgroundTasks):
         unique_num = random.randint(100000, 999999)
         order_id = f"ORDER-{unique_num}"
 
+        cert_path = ""
+        if order.certificate_b64:
+            try:
+                import base64
+                import re
+                b64_data = order.certificate_b64
+                if "," in b64_data:
+                    b64_data = b64_data.split(",", 1)[1]
+                cert_bytes = base64.b64decode(b64_data)
+                raw_filename = order.certificate_filename or "certificate.p12"
+                safe_name = re.sub(r'[^a-zA-Z0-9_\.-]', '_', raw_filename)
+                certs_dir = BASE_DIR / "uploaded_certs"
+                certs_dir.mkdir(parents=True, exist_ok=True)
+                dest = certs_dir / f"{order_id}_{safe_name}"
+                with open(dest, "wb") as f:
+                    f.write(cert_bytes)
+                cert_path = str(dest)
+                logger.info(f"Saved digital certificate for {order_id} at {cert_path}")
+            except Exception as e:
+                logger.error(f"Failed to save certificate for {order_id}: {e}")
+
         cur.execute(
             """
             INSERT INTO orders (
                 order_id, name, doc_type, doc_number, citizenship,
-                email, phone, province, office, procedure, status,
-                notes, created_at, updated_at
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'waiting', '', ?, ?)
+                email, phone, province, office, procedure,
+                birth_date, birth_country, card_expiry_date,
+                certificate_path, certificate_password,
+                status, notes, created_at, updated_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'waiting', '', ?, ?)
             """,
             (
                 order_id, order.name.strip(), order.doc_type.strip(), cleaned_doc,
                 order.citizenship.strip(), order.email.strip(), phone_number,
                 order.province.strip(), order.office.strip() if order.office else "",
-                order.procedure.strip(), now, now
+                order.procedure.strip(),
+                order.birth_date.strip() if order.birth_date else "",
+                order.birth_country.strip() if order.birth_country else "",
+                order.card_expiry_date.strip() if order.card_expiry_date else "",
+                cert_path,
+                order.certificate_password.strip() if order.certificate_password else "",
+                now, now
             )
         )
         conn.commit()
@@ -973,42 +1018,13 @@ def intake_page():
                     <div class="grid-2">
                         <div>
                             <label>Full Name *</label>
-                            <input type="text" id="name" required placeholder="e.g. MD MUSTAK AHMED">
+                            <input type="text" id="name" required placeholder="Full Name (as in passport/NIE)">
                         </div>
                         <div>
                             <label>Citizenship / Nationality *</label>
-                            <input type="text" id="citizenship" list="citizenshipList" required placeholder="e.g. Pakistan, Bangladesh, Colombia">
-                            <datalist id="citizenshipList">
-                                <option value="Pakistan">
-                                <option value="Bangladesh">
-                                <option value="India">
-                                <option value="Morocco">
-                                <option value="Colombia">
-                                <option value="Venezuela">
-                                <option value="Peru">
-                                <option value="Honduras">
-                                <option value="Ecuador">
-                                <option value="Dominican Republic">
-                                <option value="Argentina">
-                                <option value="Brazil">
-                                <option value="Paraguay">
-                                <option value="Bolivia">
-                                <option value="Cuba">
-                                <option value="Chile">
-                                <option value="Uruguay">
-                                <option value="Ukraine">
-                                <option value="United Kingdom">
-                                <option value="China">
-                                <option value="Senegal">
-                                <option value="Algeria">
-                                <option value="Nigeria">
-                                <option value="Philippines">
-                                <option value="United States">
-                                <option value="Italy">
-                                <option value="France">
-                                <option value="Germany">
-                                <option value="Romania">
-                            </datalist>
+                            <select id="citizenshipSelect" required onchange="onCitizenshipChanged(this.value)">
+                            </select>
+                            <input type="text" id="customCitizenshipInput" placeholder="✍️ Type custom nationality..." style="margin-top: 0.4rem; display: none;">
                         </div>
                     </div>
 
@@ -1023,19 +1039,37 @@ def intake_page():
                         </div>
                         <div>
                             <label>Document Number *</label>
-                            <input type="text" id="doc_number" required placeholder="e.g. Z5068943R">
+                            <input type="text" id="doc_number" required placeholder="NIE, Passport or DNI number">
                         </div>
                     </div>
 
                     <div class="grid-2" style="margin-top: 1rem;">
                         <div>
-                            <label>Email *</label>
-                            <input type="email" id="email" required placeholder="customer@example.com">
+                            <label>Date of Birth (Fecha de Nacimiento) *</label>
+                            <input type="date" id="birth_date" required>
+                        </div>
+                        <div>
+                            <label>Country of Birth (País de Nacimiento)</label>
+                            <select id="birthCountrySelect" onchange="onBirthCountryChanged(this.value)">
+                            </select>
+                            <input type="text" id="customBirthCountryInput" placeholder="✍️ Type country of birth..." style="margin-top: 0.4rem; display: none;">
+                        </div>
+                    </div>
+
+                    <div class="grid-2" style="margin-top: 1rem;">
+                        <div>
+                            <label>Current Card Expiry Date (Optional)</label>
+                            <input type="date" id="card_expiry_date">
                         </div>
                         <div>
                             <label>Phone (Optional)</label>
-                            <input type="tel" id="phone" placeholder="Leave empty to use service number">
+                            <input type="tel" id="phone" placeholder="Contact mobile number">
                         </div>
+                    </div>
+
+                    <div style="margin-top: 1rem;">
+                        <label>Email *</label>
+                        <input type="email" id="email" required placeholder="customer@example.com">
                     </div>
 
                     <div class="grid-2" style="margin-top: 1rem;">
@@ -1046,7 +1080,7 @@ def intake_page():
                             <input type="text" id="customProvinceInput" placeholder="✍️ Type custom city / province..." style="margin-top: 0.4rem; display: none;">
                         </div>
                         <div>
-                            <label>Office / Comisaría</label>
+                            <label>Office / Comisaría (Police Station)</label>
                             <select id="officeSelect" onchange="onOfficeChanged(this.value)">
                             </select>
                             <input type="text" id="customOfficeInput" placeholder="✍️ Type custom office / comisaría..." style="margin-top: 0.4rem; display: none;">
@@ -1058,6 +1092,29 @@ def intake_page():
                         <select id="procedureSelect" required onchange="onProcChanged(this.value)">
                         </select>
                         <input type="text" id="customProcInput" placeholder="✍️ Type custom procedure..." style="margin-top: 0.4rem; display: none;">
+                    </div>
+
+                    <!-- DIGITAL CERTIFICATE (OPTIONAL) -->
+                    <div style="margin-top: 1.25rem; background: #f8fafc; border: 1px dashed #cbd5e1; border-radius: 8px; padding: 1.1rem;">
+                        <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 0.5rem; flex-wrap: wrap; gap: 0.5rem;">
+                            <label style="margin: 0; font-size: 0.95rem; font-weight: 700; color: #1e293b; display: flex; align-items: center; gap: 0.4rem;">
+                                🔐 Digital Certificate (Certificado Digital FNMT / Cl@ve)
+                            </label>
+                            <span style="font-size: 0.75rem; background: #e2e8f0; color: #475569; padding: 0.2rem 0.5rem; border-radius: 4px; font-weight: 600;">Optional</span>
+                        </div>
+                        <p style="margin: 0 0 0.85rem 0; font-size: 0.82rem; color: #64748b; line-height: 1.4;">
+                            Upload applicant's software certificate (<code>.p12</code> or <code>.pfx</code>) to enable direct/priority Sede Electrónica booking.
+                        </p>
+                        <div class="grid-2">
+                            <div>
+                                <label style="font-size: 0.8rem; font-weight: 600; color: #475569;">Upload Certificate (.p12 / .pfx)</label>
+                                <input type="file" id="certFile" accept=".p12,.pfx" style="padding: 0.45rem; font-size: 0.85rem;">
+                            </div>
+                            <div>
+                                <label style="font-size: 0.8rem; font-weight: 600; color: #475569;">Certificate Password (Contraseña)</label>
+                                <input type="password" id="certPassword" placeholder="Export password (if protected)">
+                            </div>
+                        </div>
                     </div>
 
                     <div style="margin-top: 1.5rem;">
@@ -1237,7 +1294,28 @@ def intake_page():
                 { value: "__custom__", label: "✍️ Otro trámite (Specify custom)..." }
             ];
 
+            const COUNTRIES_LIST = [
+                "Pakistan", "Bangladesh", "India", "Morocco", "Colombia", "Venezuela", "Peru", 
+                "Honduras", "Ecuador", "Dominican Republic", "Argentina", "Brazil", "Paraguay", 
+                "Bolivia", "Cuba", "Chile", "Uruguay", "Ukraine", "United Kingdom", "China", 
+                "Senegal", "Algeria", "Nigeria", "Philippines", "United States", "Mexico", 
+                "Nicaragua", "Guatemala", "El Salvador", "Russia", "Egypt", "Ghana", "Georgia", 
+                "Armenia", "Italy", "France", "Germany", "Romania", "Portugal", "Spain"
+            ];
+
             function initDropdowns() {
+                const citSel = document.getElementById('citizenshipSelect');
+                citSel.innerHTML = `<option value="" disabled selected>-- Select Citizenship / Nationality --</option>` +
+                    COUNTRIES_LIST.map(c => `<option value="${c}">${c}</option>`).join('') +
+                    `<option value="__custom__">✍️ Other Nationality (Specify custom)...</option>`;
+                citSel.value = "Pakistan";
+
+                const birthCountrySel = document.getElementById('birthCountrySelect');
+                birthCountrySel.innerHTML = `<option value="">Same as Citizenship (Default)</option>` +
+                    COUNTRIES_LIST.map(c => `<option value="${c}">${c}</option>`).join('') +
+                    `<option value="__custom__">✍️ Other Country (Specify custom)...</option>`;
+                birthCountrySel.value = "";
+
                 const provSel = document.getElementById('provinceSelect');
                 provSel.innerHTML = SPANISH_PROVINCES.map(p => `<option value="${p}">${p}</option>`).join('') +
                     `<option value="__custom__">✍️ Otra ciudad / provincia (Specify custom)...</option>`;
@@ -1248,6 +1326,30 @@ def intake_page():
                 const procSel = document.getElementById('procedureSelect');
                 procSel.innerHTML = PROCEDURES_LIST.map(p => `<option value="${p.value}">${p.label}</option>`).join('');
                 procSel.value = PROCEDURES_LIST[0].value;
+            }
+
+            function onCitizenshipChanged(val) {
+                const customCit = document.getElementById('customCitizenshipInput');
+                if (val === '__custom__') {
+                    customCit.style.display = 'block';
+                    customCit.required = true;
+                    customCit.focus();
+                } else {
+                    customCit.style.display = 'none';
+                    customCit.required = false;
+                }
+            }
+
+            function onBirthCountryChanged(val) {
+                const customBirth = document.getElementById('customBirthCountryInput');
+                if (val === '__custom__') {
+                    customBirth.style.display = 'block';
+                    customBirth.required = true;
+                    customBirth.focus();
+                } else {
+                    customBirth.style.display = 'none';
+                    customBirth.required = false;
+                }
             }
 
             function onProvinceChanged(prov) {
@@ -1310,6 +1412,29 @@ def intake_page():
                 const alertBox = document.getElementById('alertBox');
                 alertBox.style.display = 'none';
 
+                const citSel = document.getElementById('citizenshipSelect');
+                const citizenship = citSel.value === '__custom__' ? document.getElementById('customCitizenshipInput').value.trim() : citSel.value;
+                if (!citizenship) {
+                    alertBox.className = 'alert alert-error';
+                    alertBox.innerText = 'Please select or specify citizenship / nationality.';
+                    alertBox.style.display = 'block';
+                    return;
+                }
+
+                const birthDate = document.getElementById('birth_date').value.trim();
+                if (!birthDate) {
+                    alertBox.className = 'alert alert-error';
+                    alertBox.innerText = 'Please enter Date of Birth.';
+                    alertBox.style.display = 'block';
+                    return;
+                }
+
+                const birthCountrySel = document.getElementById('birthCountrySelect');
+                let birthCountry = birthCountrySel.value === '__custom__' ? document.getElementById('customBirthCountryInput').value.trim() : birthCountrySel.value;
+                if (!birthCountry) {
+                    birthCountry = citizenship;
+                }
+
                 const provSel = document.getElementById('provinceSelect');
                 const province = provSel.value === '__custom__' ? document.getElementById('customProvinceInput').value.trim() : provSel.value;
 
@@ -1332,16 +1457,44 @@ def intake_page():
                     return;
                 }
 
+                // Process digital certificate if provided
+                let certB64 = null;
+                let certFilename = null;
+                const certFileInput = document.getElementById('certFile');
+                if (certFileInput.files && certFileInput.files[0]) {
+                    const file = certFileInput.files[0];
+                    certFilename = file.name;
+                    try {
+                        certB64 = await new Promise((resolve, reject) => {
+                            const reader = new FileReader();
+                            reader.onload = () => resolve(reader.result);
+                            reader.onerror = (err) => reject(err);
+                            reader.readAsDataURL(file);
+                        });
+                    } catch (fErr) {
+                        alertBox.className = 'alert alert-error';
+                        alertBox.innerText = 'Error reading certificate file: ' + fErr.message;
+                        alertBox.style.display = 'block';
+                        return;
+                    }
+                }
+
                 const payload = {
                     name: document.getElementById('name').value.trim(),
-                    citizenship: document.getElementById('citizenship').value.trim(),
+                    citizenship: citizenship,
                     doc_type: document.getElementById('doc_type').value,
                     doc_number: document.getElementById('doc_number').value.trim(),
                     email: document.getElementById('email').value.trim(),
                     phone: document.getElementById('phone').value.trim(),
                     province: province,
                     office: office,
-                    procedure: procedure
+                    procedure: procedure,
+                    birth_date: birthDate,
+                    birth_country: birthCountry,
+                    card_expiry_date: document.getElementById('card_expiry_date').value.trim(),
+                    certificate_b64: certB64,
+                    certificate_filename: certFilename,
+                    certificate_password: document.getElementById('certPassword').value.trim()
                 };
 
                 try {
@@ -1799,7 +1952,11 @@ def admin_page():
                         return `
                             <tr style="${isPending ? 'background: #fff1f2; outline: 2px solid #f43f5e;' : ''}">
                                 <td><strong>${o.order_id}</strong></td>
-                                <td>${o.name} <br><small style="color: #64748b;">${o.citizenship}</small></td>
+                                <td>
+                                    <strong>${o.name}</strong> <br>
+                                    <small style="color: #64748b;">${o.citizenship || ''}${o.birth_date ? ' • DOB: '+o.birth_date : ''}</small>
+                                    ${o.certificate_path ? '<span class="badge" style="background: #e0e7ff; color: #4338ca; font-size: 0.7rem; padding: 1px 5px; margin-left: 3px;" title="Digital Certificate available">🔐 Cert</span>' : ''}
+                                </td>
                                 <td>${o.doc_type}: <code>${o.doc_number}</code></td>
                                 <td>${o.procedure} <br><small style="color: #64748b;">${o.province} ${o.office ? '('+o.office+')' : ''}</small></td>
                                 <td>${o.email}<br><small style="color: #64748b;">${o.phone}</small></td>
