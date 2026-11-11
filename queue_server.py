@@ -1150,17 +1150,19 @@ def admin_page():
     <html lang="en">
     <head>
         <meta charset="UTF-8">
-        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
         <title>Control Board - Cita Previa & Telegram Broadcaster</title>
         <style>
             :root { --primary: #2563eb; --primary-hover: #1d4ed8; --bg: #f8fafc; --card: #ffffff; --text: #0f172a; --border: #e2e8f0; }
             * { box-sizing: border-box; }
             body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; background: var(--bg); margin: 0; padding: 1.5rem; color: var(--text); -webkit-font-smoothing: antialiased; }
-            .header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 1.5rem; }
+
+            .header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 1.25rem; gap: 1rem; }
             h1 { margin: 0; font-size: 1.5rem; }
-            .btn { background: var(--primary); color: white; padding: 0.5rem 1rem; border-radius: 6px; text-decoration: none; font-size: 0.9rem; font-weight: bold; border: none; cursor: pointer; display: inline-flex; align-items: center; justify-content: center; gap: 0.4rem; min-height: 38px; }
+            .header-actions { display: flex; gap: 0.5rem; }
+            .btn { background: var(--primary); color: white; padding: 0.55rem 1rem; border-radius: 8px; text-decoration: none; font-size: 0.9rem; font-weight: 600; border: none; cursor: pointer; display: inline-flex; align-items: center; justify-content: center; gap: 0.4rem; min-height: 40px; transition: background 0.15s; }
             .btn:hover { background: var(--primary-hover); }
-            .btn-action { padding: 0.4rem 0.75rem; font-size: 0.8rem; border-radius: 6px; background: #0284c7; color: white; border: none; cursor: pointer; display: inline-flex; align-items: center; justify-content: center; min-height: 34px; font-weight: 600; }
+            .btn-action { padding: 0.4rem 0.75rem; font-size: 0.8rem; border-radius: 6px; background: #0284c7; color: white; border: none; cursor: pointer; display: inline-flex; align-items: center; justify-content: center; min-height: 36px; font-weight: 600; }
             .btn-action:hover { background: #0369a1; }
             .btn-success { background: #16a34a; }
             .btn-success:hover { background: #15803d; }
@@ -1169,29 +1171,34 @@ def admin_page():
             .btn-secondary { background: #64748b; }
             .btn-secondary:hover { background: #475569; }
 
-            .tabs { display: flex; gap: 0.5rem; margin-bottom: 1.5rem; border-bottom: 2px solid #e2e8f0; padding-bottom: 0.5rem; overflow-x: auto; white-space: nowrap; -webkit-overflow-scrolling: touch; }
-            .tab-btn { background: none; border: none; padding: 0.6rem 1.1rem; font-size: 0.95rem; font-weight: 600; color: #64748b; cursor: pointer; border-radius: 6px; flex-shrink: 0; transition: background 0.15s, color 0.15s; }
-            .tab-btn.active { background: #eff6ff; color: var(--primary); }
+            /* Modern iOS Segmented Tabs */
+            .tabs { display: flex; background: #e2e8f0; padding: 4px; border-radius: 10px; gap: 4px; margin-bottom: 1.25rem; }
+            .tab-btn { flex: 1; padding: 0.65rem 0.5rem; font-size: 0.9rem; font-weight: 600; text-align: center; border-radius: 8px; border: none; background: transparent; color: #475569; cursor: pointer; transition: all 0.15s ease; display: flex; align-items: center; justify-content: center; gap: 0.35rem; }
+            .tab-btn.active { background: #ffffff; color: var(--primary); box-shadow: 0 1px 3px rgba(0,0,0,0.12); font-weight: 700; }
 
             .tab-content { display: none; }
             .tab-content.active { display: block; }
 
-            .stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap: 0.75rem; margin-bottom: 1.5rem; }
-            .stat-card { background: white; padding: 0.9rem 1rem; border-radius: 8px; border: 1px solid var(--border); box-shadow: 0 1px 3px rgba(0,0,0,0.05); }
+            .stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap: 0.75rem; margin-bottom: 1.25rem; }
+            .stat-card { background: white; padding: 0.9rem 1rem; border-radius: 10px; border: 1px solid var(--border); box-shadow: 0 1px 3px rgba(0,0,0,0.05); }
             .stat-title { font-size: 0.75rem; text-transform: uppercase; color: #64748b; font-weight: 700; letter-spacing: 0.04em; }
             .stat-value { font-size: 1.5rem; font-weight: bold; margin-top: 0.25rem; }
 
-            .card { background: white; border-radius: 10px; padding: 1.25rem; margin-bottom: 1.5rem; border: 1px solid var(--border); box-shadow: 0 1px 3px rgba(0,0,0,0.05); }
-            .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; }
+            .card { background: white; border-radius: 12px; padding: 1.25rem; margin-bottom: 1.25rem; border: 1px solid var(--border); box-shadow: 0 1px 3px rgba(0,0,0,0.05); }
+            .card-header-flex { display: flex; justify-content: space-between; align-items: flex-start; gap: 0.5rem; flex-wrap: wrap; margin-bottom: 0.5rem; }
+            .form-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; }
             label { display: block; font-size: 0.85rem; font-weight: 600; margin-bottom: 0.35rem; color: #475569; }
-            input, select { width: 100%; padding: 0.65rem 0.75rem; border: 1px solid #cbd5e1; border-radius: 6px; font-size: 0.9rem; }
+            input, select { width: 100%; padding: 0.7rem 0.85rem; border: 1px solid #cbd5e1; border-radius: 8px; font-size: 0.95rem; }
 
-            .table-responsive { width: 100%; overflow-x: auto; -webkit-overflow-scrolling: touch; border-radius: 8px; border: 1px solid var(--border); margin-bottom: 1.5rem; background: white; }
-            table { width: 100%; border-collapse: collapse; min-width: 720px; }
+            .proxy-btn-row { display: grid; grid-template-columns: 1fr 1.3fr 1.3fr; gap: 0.5rem; margin-top: 0.75rem; }
+            .proxy-btn-row button { min-height: 42px; font-size: 0.875rem; }
+
+            .table-responsive { width: 100%; overflow-x: auto; -webkit-overflow-scrolling: touch; border-radius: 10px; border: 1px solid var(--border); margin-bottom: 1.25rem; background: white; }
+            table { width: 100%; border-collapse: collapse; min-width: 680px; }
             th, td { padding: 0.75rem 0.9rem; text-align: left; border-bottom: 1px solid var(--border); font-size: 0.875rem; }
             th { background: #f8fafc; color: #475569; font-weight: 600; white-space: nowrap; }
 
-            .badge { display: inline-block; padding: 0.2rem 0.5rem; border-radius: 9999px; font-size: 0.75rem; font-weight: bold; text-transform: uppercase; white-space: nowrap; }
+            .badge { display: inline-block; padding: 0.25rem 0.55rem; border-radius: 9999px; font-size: 0.75rem; font-weight: 700; text-transform: uppercase; white-space: nowrap; }
             .badge-waiting { background: #fef3c7; color: #92400e; }
             .badge-searching { background: #e0f2fe; color: #0369a1; }
             .badge-code_pending { background: #fce7f3; color: #9d174d; }
@@ -1210,50 +1217,58 @@ def admin_page():
                 100% { opacity: 1; }
             }
 
-            .alert-box { padding: 0.75rem 1rem; border-radius: 6px; margin-bottom: 1rem; font-size: 0.9rem; display: none; word-break: break-word; }
+            .alert-box { padding: 0.75rem 1rem; border-radius: 8px; margin-bottom: 1rem; font-size: 0.9rem; display: none; word-break: break-word; }
             .alert-box.success { background: #dcfce7; color: #15803d; border: 1px solid #86efac; display: block; }
             .alert-box.error { background: #fee2e2; color: #991b1b; border: 1px solid #f87171; display: block; }
 
-            /* Mobile Responsive Styles */
+            /* Mobile-specific adjustments (Phones & Tablets <= 768px, including iPhone 16 Pro Max at 440px) */
             @media (max-width: 768px) {
                 body { padding: 0.75rem 0.5rem; }
-                .header { flex-direction: column; align-items: stretch; gap: 0.85rem; margin-bottom: 1rem; }
-                .header h1 { font-size: 1.25rem; line-height: 1.3; }
+                .header { flex-direction: column; align-items: stretch; gap: 0.75rem; margin-bottom: 1rem; }
+                .header h1 { font-size: 1.2rem; line-height: 1.25; }
                 .header-actions { display: flex; gap: 0.5rem; width: 100%; }
-                .header-actions .btn { flex: 1; justify-content: center; }
+                .header-actions .btn { flex: 1; justify-content: center; min-height: 42px; font-size: 0.85rem; }
 
-                .tabs { padding-bottom: 0.4rem; gap: 0.25rem; }
-                .tab-btn { padding: 0.5rem 0.75rem; font-size: 0.85rem; }
+                .tabs { margin-bottom: 1rem; gap: 3px; }
+                .tab-btn { padding: 0.6rem 0.35rem; font-size: 0.82rem; }
 
-                .stats { grid-template-columns: repeat(2, 1fr); gap: 0.5rem; }
+                .stats { grid-template-columns: repeat(2, 1fr) !important; gap: 0.5rem; }
                 .stats .stat-card:last-child { grid-column: span 2; }
                 .stat-card { padding: 0.75rem; }
-                .stat-value { font-size: 1.3rem; }
+                .stat-value { font-size: 1.35rem; }
 
-                .card { padding: 1rem; margin-bottom: 1rem; border-radius: 10px; }
-                .grid-2 { grid-template-columns: 1fr; gap: 0.75rem; }
-                input, select { font-size: 16px; padding: 0.7rem; }
+                .card { padding: 1rem 0.85rem; margin-bottom: 1rem; border-radius: 10px; }
+                .card-header-flex { flex-direction: column; align-items: flex-start; gap: 0.4rem; }
+                .card-header-flex #portalConnectionStatusBadge { width: 100%; }
+                .card-header-flex .badge { display: block; text-align: center; width: 100%; }
+
+                .form-grid { grid-template-columns: 1fr !important; gap: 0.85rem; }
+                input, select { font-size: 16px !important; padding: 0.75rem; } /* Prevents iOS auto-zoom */
+
+                .proxy-btn-row { grid-template-columns: 1fr !important; gap: 0.5rem; }
+                .proxy-btn-row button { width: 100% !important; min-height: 44px; font-size: 0.9rem; justify-content: center; }
+
+                .card-footer-responsive { flex-direction: column; align-items: stretch !important; gap: 0.65rem !important; }
+                .card-footer-responsive button { width: 100% !important; margin-left: 0 !important; justify-content: center; min-height: 44px; font-size: 0.9rem; }
+
+                .daemon-card { flex-direction: column; align-items: stretch !important; gap: 0.75rem; }
+                .daemon-actions { width: 100%; }
+                .daemon-actions button { width: 100%; min-height: 44px; justify-content: center; font-size: 0.95rem; }
 
                 .toolbar-responsive { flex-direction: column; align-items: stretch !important; gap: 0.75rem !important; }
                 .toolbar-responsive input#citySearch { width: 100% !important; font-size: 16px; }
                 .filter-pills { display: flex; width: 100%; gap: 0.25rem; }
-                .filter-pills button { flex: 1; text-align: center; padding: 0.45rem 0.2rem; font-size: 0.75rem; }
-                .toolbar-actions { width: 100%; margin-left: 0 !important; display: flex; flex-direction: column; gap: 0.4rem; }
-                .toolbar-actions button { width: 100%; justify-content: center; padding: 0.55rem; }
-
-                .card-footer-responsive { flex-direction: column; align-items: stretch !important; gap: 0.75rem !important; }
-                .card-footer-responsive button { width: 100% !important; margin-left: 0 !important; justify-content: center; }
-
-                .proxy-actions { flex-direction: column !important; }
-                .proxy-actions button { width: 100% !important; justify-content: center; }
+                .filter-pills button { flex: 1; text-align: center; padding: 0.5rem 0.2rem; font-size: 0.78rem; min-height: 38px; }
+                .toolbar-actions { width: 100%; margin-left: 0 !important; display: flex; flex-direction: column; gap: 0.45rem; }
+                .toolbar-actions button { width: 100%; justify-content: center; min-height: 42px; padding: 0.6rem; font-size: 0.88rem; }
             }
         </style>
     </head>
     <body>
         <div class="header">
             <div>
-                <h1>📦 Control Board: Appointments & Telegram Broadcaster</h1>
-                <p style="margin: 0.25rem 0 0; color: #64748b; font-size: 0.9rem;">Manage customer booking queue and live slot broadcast scanners.</p>
+                <h1>📦 Control Board: Appointments & Broadcaster</h1>
+                <p style="margin: 0.25rem 0 0; color: #64748b; font-size: 0.85rem;">Manage customer booking queue & live slot broadcast scanners.</p>
             </div>
             <div class="header-actions">
                 <a href="/" class="btn btn-secondary">+ Customer Intake</a>
@@ -1263,13 +1278,13 @@ def admin_page():
 
         <div class="tabs">
             <button class="tab-btn active" onclick="switchTab('ordersTab')">📋 Orders Queue</button>
-            <button class="tab-btn" onclick="switchTab('monitorTab')">📡 Live Monitor & Telegram Broadcast</button>
+            <button class="tab-btn" onclick="switchTab('monitorTab')">📡 Live Monitor & Alerts</button>
         </div>
 
         <!-- TAB 1: ORDERS QUEUE -->
         <div id="ordersTab" class="tab-content active">
             <div style="display: flex; justify-content: flex-end; margin-bottom: 1rem;">
-                <button onclick="purgeData()" class="btn btn-danger">🧹 Scrub Finished Data</button>
+                <button onclick="purgeData()" class="btn btn-danger" style="width: auto;">🧹 Scrub Finished Data</button>
             </div>
 
             <div class="stats" id="statsRow"></div>
@@ -1297,73 +1312,70 @@ def admin_page():
         <!-- TAB 2: LIVE MONITOR & TELEGRAM BROADCAST -->
         <div id="monitorTab" class="tab-content">
             <!-- LIVE OPEN BOOKINGS HERO SHOWCASE -->
-            <div id="heroOpenSection" style="display: none; background: #ecfdf5; border: 2px solid #22c55e; border-radius: 10px; padding: 1.25rem; margin-bottom: 1.5rem;">
-                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.75rem;">
-                    <h3 style="margin: 0; color: #15803d; display: flex; align-items: center; gap: 0.5rem;">
+            <div id="heroOpenSection" style="display: none; background: #ecfdf5; border: 2px solid #22c55e; border-radius: 12px; padding: 1.25rem; margin-bottom: 1.25rem;">
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.75rem; flex-wrap: wrap; gap: 0.5rem;">
+                    <h3 style="margin: 0; color: #15803d; display: flex; align-items: center; gap: 0.5rem; font-size: 1.05rem;">
                         <span style="display: inline-block; width: 12px; height: 12px; background: #22c55e; border-radius: 50%; box-shadow: 0 0 10px #22c55e;"></span>
-                        🔥 APPOINTMENTS OPEN RIGHT NOW (<span id="heroOpenCount">0</span>)
+                        🔥 APPOINTMENTS OPEN NOW (<span id="heroOpenCount">0</span>)
                     </h3>
-                    <span style="font-size: 0.85rem; color: #166534; font-weight: bold;">⚡ Live Availability Stream</span>
+                    <span style="font-size: 0.8rem; color: #166534; font-weight: bold;">⚡ Live Availability Stream</span>
                 </div>
-                <div id="heroOpenCards" style="display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 0.75rem;"></div>
+                <div id="heroOpenCards" style="display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 0.75rem;"></div>
             </div>
 
             <!-- SPANISH PORTAL CONNECTIVITY & PROXY DIAGNOSTICS -->
             <div class="card" style="border-left: 4px solid #f59e0b;">
-                <div style="display: flex; justify-content: space-between; align-items: flex-start;">
+                <div class="card-header-flex">
                     <div>
-                        <h3 style="margin-top: 0; display: flex; align-items: center; gap: 0.5rem;">
-                            🛡️ Spanish Portal Connectivity & Proxy Settings
+                        <h3 style="margin: 0; display: flex; align-items: center; gap: 0.4rem; font-size: 1.05rem;">
+                            🛡️ Spanish Portal & Proxy Settings
                         </h3>
-                        <p style="color: #64748b; font-size: 0.85rem; margin-top: -0.25rem;">
-                            The Spanish Immigration Portal (<code>icp.administracionelectronica.gob.es</code> / Red SARA) drops direct connections from foreign cloud datacenters (like Railway in Amsterdam). A Spanish proxy (Residential / Mobile / ISP in Spain) allows 24/7 instant slot detection.
+                        <p style="color: #64748b; font-size: 0.82rem; margin: 0.25rem 0 0; line-height: 1.35;">
+                            Direct cloud datacenters are dropped by Spain's Red SARA firewall. A Spanish proxy allows 24/7 instant slot detection.
                         </p>
                     </div>
                     <div id="portalConnectionStatusBadge">
-                        <span class="badge badge-timeout" style="padding: 0.4rem 0.8rem; font-size: 0.8rem;">⚠️ Check Connection</span>
+                        <span class="badge badge-timeout" style="padding: 0.35rem 0.65rem; font-size: 0.75rem;">⚠️ Check Connection</span>
                     </div>
                 </div>
 
                 <div id="proxyAlertBox" class="alert-box"></div>
 
-                <div class="grid-2" style="margin-top: 0.5rem;">
-                    <div>
-                        <label>Spanish Proxy URL (HTTP/HTTPS/SOCKS5)</label>
-                        <input type="text" id="proxyUrlInput" placeholder="e.g. http://username:password@es-proxy.iproyal.com:12323">
-                        <small style="color: #64748b;" id="proxyStatusNotice">Format: http://user:pass@host:port or socks5://host:port</small>
-                    </div>
-                    <div style="display: flex; flex-direction: column; justify-content: flex-end;">
-                        <div style="display: flex; gap: 0.5rem; flex-wrap: wrap;" class="proxy-actions">
-                            <button class="btn" onclick="saveProxySettings()" style="flex: 1;">💾 Save Proxy</button>
-                            <button class="btn btn-action" style="background: #0284c7; flex: 1.2;" onclick="testPortalConnectionNow()">⚡ Test Portal Connection</button>
-                            <button class="btn btn-action" style="background: #8b5cf6; flex: 1.2;" onclick="autoFindFreeProxy()">🔍 Auto-Find Free ES Proxy</button>
-                        </div>
-                        <small style="color: #64748b; margin-top: 0.4rem;" id="diagnosticResultText">Click 'Test Portal Connection' or 'Auto-Find Free ES Proxy' to test reachability.</small>
-                    </div>
+                <div style="margin-top: 0.75rem;">
+                    <label>Spanish Proxy URL (HTTP/HTTPS/SOCKS5)</label>
+                    <input type="text" id="proxyUrlInput" placeholder="e.g. http://username:password@es-proxy:12323">
+                    <small style="color: #64748b; display: block; margin-top: 0.25rem;" id="proxyStatusNotice">Format: http://user:pass@host:port or socks5://host:port</small>
                 </div>
+
+                <div class="proxy-btn-row">
+                    <button class="btn" onclick="saveProxySettings()">💾 Save Proxy</button>
+                    <button class="btn btn-action" style="background: #0284c7;" onclick="testPortalConnectionNow()">⚡ Test Connection</button>
+                    <button class="btn btn-action" style="background: #8b5cf6;" onclick="autoFindFreeProxy()">🔍 Auto-Find Proxy</button>
+                </div>
+                <small style="color: #64748b; margin-top: 0.5rem; display: block;" id="diagnosticResultText">Click 'Test Connection' or 'Auto-Find Proxy' to test live reachability.</small>
             </div>
 
             <!-- Telegram Config Card -->
             <div class="card">
-                <h3 style="margin-top: 0;">📢 Telegram Broadcast Configuration</h3>
-                <p style="color: #64748b; font-size: 0.85rem; margin-top: -0.25rem;">
-                    Configure the Telegram Bot token and target channels/chats. When appointment slots open, an urgent broadcast alert will be sent immediately.
+                <h3 style="margin-top: 0; font-size: 1.05rem;">📢 Telegram Broadcast Configuration</h3>
+                <p style="color: #64748b; font-size: 0.82rem; margin-top: -0.25rem;">
+                    Configure the Telegram Bot token and target channels/chats. When slots open, urgent broadcast alerts will be sent immediately.
                 </p>
                 <div id="tgAlertBox" class="alert-box"></div>
-                <div class="grid-2">
+                <div class="form-grid">
                     <div>
                         <label>Telegram Bot Token (from @BotFather)</label>
                         <input type="password" id="tgBotToken" placeholder="e.g. 123456789:ABCdefGhIJKlmNoPQRsTUVwxyZ">
-                        <small style="color: #64748b;" id="tokenMaskedNotice"></small>
+                        <small style="color: #64748b; display: block; margin-top: 0.2rem;" id="tokenMaskedNotice"></small>
                     </div>
                     <div>
                         <label>Broadcast Channels / Group IDs (comma-separated)</label>
-                        <input type="text" id="tgChatId" placeholder="e.g. @my_citas_channel, -100123456789, 98765432">
-                        <small style="color: #64748b;">Supports public channels (@name), private groups (-100...), or user chat IDs.</small>
+                        <input type="text" id="tgChatId" placeholder="e.g. @my_citas_channel, -100123456789">
+                        <small style="color: #64748b; display: block; margin-top: 0.2rem;">Supports channels (@name), groups (-100...), or user chat IDs.</small>
                     </div>
                 </div>
                 <div style="margin-top: 1rem; display: flex; gap: 0.5rem; align-items: center;" class="card-footer-responsive">
-                    <label style="display: flex; align-items: center; gap: 0.5rem; margin: 0; cursor: pointer;">
+                    <label style="display: flex; align-items: center; gap: 0.5rem; margin: 0; cursor: pointer; font-size: 0.9rem;">
                         <input type="checkbox" id="tgEnabled" style="width: auto;"> <b>Enable Telegram Alerts</b>
                     </label>
                     <button class="btn" onclick="saveTelegramSettings()" style="margin-left: auto;">💾 Save Telegram Settings</button>
@@ -1372,14 +1384,14 @@ def admin_page():
             </div>
 
             <!-- Monitor Daemon & Status Controls -->
-            <div class="card" style="display: flex; justify-content: space-between; align-items: center;">
+            <div class="card daemon-card" style="display: flex; justify-content: space-between; align-items: center;">
                 <div>
-                    <h3 style="margin: 0;">🛰️ Live Monitor Daemon</h3>
-                    <p style="margin: 0.25rem 0 0; color: #64748b; font-size: 0.85rem;" id="daemonStatusText">
+                    <h3 style="margin: 0; font-size: 1.05rem;">🛰️ Live Monitor Daemon</h3>
+                    <p style="margin: 0.25rem 0 0; color: #64748b; font-size: 0.82rem;" id="daemonStatusText">
                         Status: Checking daemon state...
                     </p>
                 </div>
-                <div style="display: flex; gap: 0.5rem;">
+                <div class="daemon-actions" style="display: flex; gap: 0.5rem;">
                     <button id="btnStartDaemon" class="btn btn-success" onclick="toggleDaemon('start')">▶️ Start Live Monitor</button>
                     <button id="btnStopDaemon" class="btn btn-danger" onclick="toggleDaemon('stop')" style="display: none;">⏹️ Stop Live Monitor</button>
                 </div>
@@ -1387,13 +1399,13 @@ def admin_page():
 
             <!-- Monitored Targets Table -->
             <div class="card">
-                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem;">
-                    <h3 style="margin: 0;">🎯 Monitored Provinces & Procedures</h3>
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem; flex-wrap: wrap; gap: 0.5rem;">
+                    <h3 style="margin: 0; font-size: 1.05rem;">🎯 Monitored Provinces & Procedures</h3>
                     <button class="btn btn-action" onclick="toggleAddMonitorModal()">+ Add New Target</button>
                 </div>
 
-                <div id="addMonitorForm" style="display: none; background: #f8fafc; padding: 1rem; border-radius: 6px; margin-bottom: 1rem; border: 1px solid var(--border);">
-                    <div class="grid-2">
+                <div id="addMonitorForm" style="display: none; background: #f8fafc; padding: 1rem; border-radius: 8px; margin-bottom: 1rem; border: 1px solid var(--border);">
+                    <div class="form-grid">
                         <div>
                             <label>Province</label>
                             <input type="text" id="newMonProvince" value="Barcelona" placeholder="e.g. Barcelona, Madrid, Valencia">
@@ -1411,10 +1423,10 @@ def admin_page():
 
                 <!-- Search & Filters Toolbar -->
                 <div class="toolbar-responsive" style="display: flex; gap: 0.5rem; align-items: center; margin-bottom: 1rem; flex-wrap: wrap;">
-                    <input type="text" id="citySearch" placeholder="🔍 Search city (e.g. Madrid, Barcelona)..." style="width: 240px; padding: 0.45rem 0.75rem;" oninput="filterMonitors()">
+                    <input type="text" id="citySearch" placeholder="🔍 Search city (e.g. Madrid, Barcelona)..." style="width: 240px; padding: 0.5rem 0.75rem;" oninput="filterMonitors()">
                     <div class="filter-pills" style="display: flex; gap: 0.25rem;">
                         <button class="btn-action" id="tabFilterAll" style="background: #2563eb;" onclick="setMonitorFilter('all')">All (<span id="badgeTotalCities">0</span>)</button>
-                        <button class="btn-action" id="tabFilterOpen" style="background: #16a34a; opacity: 0.7;" onclick="setMonitorFilter('available')">🟢 Open Now (<span id="badgeOpenCities">0</span>)</button>
+                        <button class="btn-action" id="tabFilterOpen" style="background: #16a34a; opacity: 0.7;" onclick="setMonitorFilter('available')">🟢 Open (<span id="badgeOpenCities">0</span>)</button>
                         <button class="btn-action" id="tabFilterClosed" style="background: #64748b; opacity: 0.7;" onclick="setMonitorFilter('no_slots')">⚪ Closed (<span id="badgeClosedCities">0</span>)</button>
                     </div>
                     <div class="toolbar-actions" style="margin-left: auto; display: flex; gap: 0.4rem; flex-wrap: wrap;">
