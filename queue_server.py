@@ -1045,11 +1045,15 @@ def intake_page():
 
                     <div class="grid-2" style="margin-top: 1rem;">
                         <div>
-                            <label>Date of Birth (Fecha de Nacimiento) *</label>
-                            <input type="date" id="birth_date" required>
+                            <label>Date / Year of Birth (Optional)</label>
+                            <div style="display: grid; grid-template-columns: 1fr 1fr 1.3fr; gap: 0.35rem;">
+                                <input type="text" id="dob_day" maxlength="2" placeholder="Day (DD)" style="text-align: center;">
+                                <input type="text" id="dob_month" maxlength="2" placeholder="Month (MM)" style="text-align: center;">
+                                <input type="text" id="dob_year" maxlength="4" placeholder="Year (YYYY)" style="text-align: center;">
+                            </div>
                         </div>
                         <div>
-                            <label>Country of Birth (País de Nacimiento)</label>
+                            <label>Country of Birth (Optional)</label>
                             <select id="birthCountrySelect" onchange="onBirthCountryChanged(this.value)">
                             </select>
                             <input type="text" id="customBirthCountryInput" placeholder="✍️ Type country of birth..." style="margin-top: 0.4rem; display: none;">
@@ -1059,7 +1063,7 @@ def intake_page():
                     <div class="grid-2" style="margin-top: 1rem;">
                         <div>
                             <label>Current Card Expiry Date (Optional)</label>
-                            <input type="date" id="card_expiry_date">
+                            <input type="text" id="card_expiry_date" placeholder="DD/MM/YYYY">
                         </div>
                         <div>
                             <label>Phone (Optional)</label>
@@ -1421,12 +1425,16 @@ def intake_page():
                     return;
                 }
 
-                const birthDate = document.getElementById('birth_date').value.trim();
-                if (!birthDate) {
-                    alertBox.className = 'alert alert-error';
-                    alertBox.innerText = 'Please enter Date of Birth.';
-                    alertBox.style.display = 'block';
-                    return;
+                const d = document.getElementById('dob_day').value.trim();
+                const m = document.getElementById('dob_month').value.trim();
+                const y = document.getElementById('dob_year').value.trim();
+                let birthDate = "";
+                if (d && m && y) {
+                    birthDate = `${d.padStart(2, '0')}/${m.padStart(2, '0')}/${y}`;
+                } else if (y && !d && !m) {
+                    birthDate = y;
+                } else if (d || m || y) {
+                    birthDate = [d, m, y].filter(Boolean).join('/');
                 }
 
                 const birthCountrySel = document.getElementById('birthCountrySelect');
