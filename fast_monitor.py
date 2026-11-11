@@ -75,6 +75,13 @@ def load_config() -> dict:
     return {}
 
 
+def get_python_bin() -> str:
+    venv_py = BASE_DIR / ".venv" / "bin" / "python"
+    if venv_py.exists():
+        return str(venv_py)
+    return sys.executable
+
+
 def get_db():
     conn = sqlite3.connect(DB_PATH)
     conn.row_factory = sqlite3.Row
@@ -136,7 +143,7 @@ class FastPortalProber:
         if self.client is None or self.client.is_closed:
             self.client = httpx.AsyncClient(
                 headers=HEADERS,
-                timeout=httpx.Timeout(20.0, connect=12.0),
+                timeout=httpx.Timeout(15.0, connect=6.0),
                 follow_redirects=True,
                 http2=HAS_HTTP2,
                 proxy=self.proxy
@@ -259,7 +266,7 @@ class FastPortalProber:
                 }
 
         except httpx.ConnectTimeout:
-            return {"has_slots": False, "status": "timeout", "message": "Connection timeout", "elapsed_ms": int((time.time() - t0) * 1000)}
+            return {"has_slots": False, "status": "timeout", "message": "Connection timeout (Red SARA firewall - Spanish proxy required)", "elapsed_ms": int((time.time() - t0) * 1000)}
         except httpx.HTTPError as e:
             return {"has_slots": False, "status": "error", "message": f"HTTP error: {type(e).__name__}", "elapsed_ms": int((time.time() - t0) * 1000)}
         except Exception as e:
@@ -331,11 +338,9 @@ async def process_single_monitor(monitor: dict, prober: FastPortalProber, config
                             q_id = queued_client["order_id"]
                             q_name = queued_client["name"]
                             print(f"      🚀 Auto-Launching Auto-Booker for queued client: {q_name} ({q_id})...")
-                            python_bin = BASE_DIR / ".venv" / "bin" / "python"
-                            if not python_bin.exists():
-                                python_bin = Path(sys.executable)
+                            python_bin = get_python_bin()
                             booker_script = BASE_DIR / "auto_booker.py"
-                            subprocess.Popen([str(python_bin), str(booker_script), "--order-id", q_id])
+                            subprocess.Popen([python_bin, str(booker_script), "--order-id", q_id])
                 except Exception as e:
                     print(f"      [Auto-booking trigger failed]: {e}")
 
@@ -349,11 +354,22 @@ async def run_fast_monitor_daemon(interval_sec: float = 3.0):
     print("=" * 70)
 
     config = load_config()
-    prober = FastPortalProber(proxy=config.get("proxy"))
+    current_proxy = config.get("proxy") or os.environ.get("PROXY_URL") or os.environ.get("HTTPS_PROXY")
+    prober = FastPortalProber(proxy=current_proxy)
 
     try:
         while True:
             t_cycle_start = time.time()
+
+            # Dynamically reload proxy if config changed in Admin UI
+            latest_config = load_config()
+            new_proxy = latest_config.get("proxy") or os.environ.get("PROXY_URL") or os.environ.get("HTTPS_PROXY")
+            if new_proxy != prober.proxy:
+                print(f"🔄 Proxy configuration updated: {new_proxy}. Re-initializing client...")
+                await prober.close()
+                prober = FastPortalProber(proxy=new_proxy)
+            config = latest_config
+
             monitors = get_active_monitors()
             if not monitors:
                 print("No active monitors found in DB. Sleeping 10s...")

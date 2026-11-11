@@ -224,6 +224,10 @@ class OtpSubmission(BaseModel):
     otp_code: str
 
 
+class ProxySettingsUpdate(BaseModel):
+    proxy: str
+
+
 class TelegramSettingsUpdate(BaseModel):
     enabled: bool
     bot_token: str
@@ -532,6 +536,95 @@ def trigger_test_broadcast():
             detail=f"Telegram broadcast failed: {res.get('results', {}).get('failed', res.get('message'))}"
         )
     return res
+
+
+# ==========================================
+# API Routes: Proxy Settings & Connection Diagnostics
+# ==========================================
+@app.get("/api/config/proxy")
+def get_proxy_config():
+    config = load_config()
+    current_proxy = config.get("proxy") or os.environ.get("PROXY_URL") or os.environ.get("HTTPS_PROXY") or ""
+    masked_proxy = ""
+    if current_proxy:
+        if "@" in current_proxy:
+            parts = current_proxy.split("@")
+            scheme_auth = parts[0]
+            host_part = parts[1]
+            if ":" in scheme_auth:
+                scheme, _ = scheme_auth.split("://", 1) if "://" in scheme_auth else ("http", scheme_auth)
+                masked_proxy = f"{scheme}://***:***@{host_part}"
+            else:
+                masked_proxy = current_proxy
+        else:
+            masked_proxy = current_proxy
+    return {
+        "proxy": current_proxy,
+        "masked_proxy": masked_proxy,
+        "is_configured": bool(current_proxy)
+    }
+
+
+@app.post("/api/config/proxy")
+def update_proxy_config(settings: ProxySettingsUpdate):
+    config = load_config()
+    proxy_val = settings.proxy.strip()
+    config["proxy"] = proxy_val
+    save_config(config)
+    if proxy_val:
+        os.environ["PROXY_URL"] = proxy_val
+        os.environ["HTTPS_PROXY"] = proxy_val
+    else:
+        os.environ.pop("PROXY_URL", None)
+        os.environ.pop("HTTPS_PROXY", None)
+    return {"status": "success", "message": "Proxy configuration updated.", "proxy": proxy_val}
+
+
+@app.post("/api/diagnostics/test-connection")
+async def test_portal_connection():
+    config = load_config()
+    proxy = config.get("proxy") or os.environ.get("PROXY_URL") or os.environ.get("HTTPS_PROXY") or None
+    portal_url = "https://icp.administracionelectronica.gob.es/icpplus/index.html"
+
+    t0 = datetime.datetime.now()
+    try:
+        async with httpx.AsyncClient(
+            headers={
+                "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36",
+                "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+                "Accept-Language": "es-ES,es;q=0.9,en;q=0.8"
+            },
+            timeout=httpx.Timeout(8.0, connect=6.0),
+            follow_redirects=True,
+            proxy=proxy
+        ) as client:
+            resp = await client.get(portal_url)
+            elapsed_ms = int((datetime.datetime.now() - t0).total_seconds() * 1000)
+            return {
+                "success": resp.status_code == 200,
+                "status_code": resp.status_code,
+                "latency_ms": elapsed_ms,
+                "proxy_used": bool(proxy),
+                "message": f"Successfully connected to Spanish Government Portal (HTTP {resp.status_code}) in {elapsed_ms}ms"
+            }
+    except httpx.ConnectTimeout:
+        elapsed_ms = int((datetime.datetime.now() - t0).total_seconds() * 1000)
+        return {
+            "success": False,
+            "status_code": 408,
+            "latency_ms": elapsed_ms,
+            "proxy_used": bool(proxy),
+            "message": "Connection Timeout: The Spanish Government Red SARA firewall blocked this connection attempt. Cloud datacenter IPs are blocked. A Spanish residential/ISP proxy is required."
+        }
+    except Exception as e:
+        elapsed_ms = int((datetime.datetime.now() - t0).total_seconds() * 1000)
+        return {
+            "success": False,
+            "status_code": 500,
+            "latency_ms": elapsed_ms,
+            "proxy_used": bool(proxy),
+            "message": f"Connection error: {type(e).__name__} ({str(e)})"
+        }
 
 
 # ==========================================
@@ -1075,6 +1168,40 @@ def admin_page():
                 <div id="heroOpenCards" style="display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 0.75rem;"></div>
             </div>
 
+            <!-- SPANISH PORTAL CONNECTIVITY & PROXY DIAGNOSTICS -->
+            <div class="card" style="border-left: 4px solid #f59e0b;">
+                <div style="display: flex; justify-content: space-between; align-items: flex-start;">
+                    <div>
+                        <h3 style="margin-top: 0; display: flex; align-items: center; gap: 0.5rem;">
+                            🛡️ Spanish Portal Connectivity & Proxy Settings
+                        </h3>
+                        <p style="color: #64748b; font-size: 0.85rem; margin-top: -0.25rem;">
+                            The Spanish Immigration Portal (<code>icp.administracionelectronica.gob.es</code> / Red SARA) drops direct connections from foreign cloud datacenters (like Railway in Amsterdam). A Spanish proxy (Residential / Mobile / ISP in Spain) allows 24/7 instant slot detection.
+                        </p>
+                    </div>
+                    <div id="portalConnectionStatusBadge">
+                        <span class="badge badge-timeout" style="padding: 0.4rem 0.8rem; font-size: 0.8rem;">⚠️ Check Connection</span>
+                    </div>
+                </div>
+
+                <div id="proxyAlertBox" class="alert-box"></div>
+
+                <div class="grid-2" style="margin-top: 0.5rem;">
+                    <div>
+                        <label>Spanish Proxy URL (HTTP/HTTPS/SOCKS5)</label>
+                        <input type="text" id="proxyUrlInput" placeholder="e.g. http://username:password@es-proxy.iproyal.com:12323">
+                        <small style="color: #64748b;" id="proxyStatusNotice">Format: http://user:pass@host:port or socks5://host:port</small>
+                    </div>
+                    <div style="display: flex; flex-direction: column; justify-content: flex-end;">
+                        <div style="display: flex; gap: 0.5rem;">
+                            <button class="btn" onclick="saveProxySettings()" style="flex: 1;">💾 Save Proxy</button>
+                            <button class="btn btn-action" style="background: #0284c7; flex: 1.2;" onclick="testPortalConnectionNow()">⚡ Test Portal Connection</button>
+                        </div>
+                        <small style="color: #64748b; margin-top: 0.4rem;" id="diagnosticResultText">Click 'Test Portal Connection' to verify live reachability.</small>
+                    </div>
+                </div>
+            </div>
+
             <!-- Telegram Config Card -->
             <div class="card">
                 <h3 style="margin-top: 0;">📢 Telegram Broadcast Configuration</h3>
@@ -1180,6 +1307,7 @@ def admin_page():
                 event.target.classList.add('active');
                 document.getElementById(tabId).classList.add('active');
                 if (tabId === 'monitorTab') {
+                    loadProxySettings();
                     loadTelegramSettings();
                     loadMonitors();
                     checkDaemonStatus();
@@ -1315,6 +1443,65 @@ def admin_page():
                     loadOrders();
                 } catch (e) {
                     alert('Error purging data: ' + e.message);
+                }
+            }
+
+            // --- PROXY SETTINGS & DIAGNOSTICS ---
+            async function loadProxySettings() {
+                try {
+                    const res = await fetch('/api/config/proxy');
+                    const data = await res.json();
+                    document.getElementById('proxyUrlInput').value = data.proxy || '';
+                    const notice = document.getElementById('proxyStatusNotice');
+                    const badge = document.getElementById('portalConnectionStatusBadge');
+                    if (data.is_configured) {
+                        notice.innerText = `Active Proxy: ${data.masked_proxy}`;
+                        badge.innerHTML = '<span class="badge badge-searching" style="padding: 0.4rem 0.8rem;">🛡️ Proxy Configured</span>';
+                    } else {
+                        notice.innerText = 'No proxy configured. Direct cloud requests to Red SARA are blocked.';
+                        badge.innerHTML = '<span class="badge badge-timeout" style="padding: 0.4rem 0.8rem;">⚠️ Direct IP (Firewalled)</span>';
+                    }
+                } catch(e) {
+                    console.error("Failed to load proxy settings", e);
+                }
+            }
+
+            async function saveProxySettings() {
+                const box = document.getElementById('proxyAlertBox');
+                box.className = 'alert-box';
+                const proxyVal = document.getElementById('proxyUrlInput').value.trim();
+                try {
+                    const res = await fetch('/api/config/proxy', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ proxy: proxyVal })
+                    });
+                    const data = await res.json();
+                    box.className = 'alert-box success';
+                    box.innerText = data.message || 'Proxy settings saved!';
+                    loadProxySettings();
+                } catch(e) {
+                    box.className = 'alert-box error';
+                    box.innerText = 'Failed to save proxy: ' + e.message;
+                }
+            }
+
+            async function testPortalConnectionNow() {
+                const resultText = document.getElementById('diagnosticResultText');
+                const badge = document.getElementById('portalConnectionStatusBadge');
+                resultText.innerHTML = '⏳ Probing <code>icp.administracionelectronica.gob.es</code> (up to 6s)...';
+                try {
+                    const res = await fetch('/api/diagnostics/test-connection', { method: 'POST' });
+                    const data = await res.json();
+                    if (data.success) {
+                        resultText.innerHTML = `🟢 <strong>Connected!</strong> Portal responded with HTTP ${data.status_code} in <b>${data.latency_ms}ms</b> ${data.proxy_used ? '(via Spanish proxy)' : ''}. Live slots can now be fetched!`;
+                        badge.innerHTML = `<span class="badge badge-available" style="padding: 0.4rem 0.8rem;">🟢 CONNECTED (${data.latency_ms}ms)</span>`;
+                    } else {
+                        resultText.innerHTML = `🔴 <strong>Firewalled:</strong> ${data.message}`;
+                        badge.innerHTML = '<span class="badge badge-timeout" style="padding: 0.4rem 0.8rem;">🔴 FIREWALLED / BLOCKED</span>';
+                    }
+                } catch(e) {
+                    resultText.innerHTML = '❌ Diagnostics failed: ' + e.message;
                 }
             }
 
@@ -1479,8 +1666,11 @@ def admin_page():
 
                 tbody.innerHTML = filtered.map(m => {
                     const isAvail = m.last_status === 'available';
+                    const isTimeout = m.last_status === 'timeout';
                     const statusClass = `badge-${m.last_status || 'pending'}`;
-                    const statusLabel = isAvail ? '🟢 SLOTS OPEN!' : (m.last_status || 'pending');
+                    let statusLabel = m.last_status || 'pending';
+                    if (isAvail) statusLabel = '🟢 SLOTS OPEN!';
+                    else if (isTimeout) statusLabel = '⚠️ TIMEOUT (Needs ES Proxy)';
                     return `
                         <tr style="${isAvail ? 'background: #f0fdf4; font-weight: 500;' : ''}">
                             <td>

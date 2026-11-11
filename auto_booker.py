@@ -130,11 +130,20 @@ def run_auto_booking(order_id: str, headless: bool = False) -> Dict[str, Any]:
     print(f"  Province: {order['province']} | Trámite: {order['procedure']}")
     print("=" * 65)
 
+    proxy_str = (
+        load_config().get("proxy")
+        or os.environ.get("PROXY_URL")
+        or os.environ.get("HTTPS_PROXY")
+        or os.environ.get("HTTP_PROXY")
+    )
+    proxy_config = {"server": proxy_str} if proxy_str else None
+
     with sync_playwright() as p:
         # Launch browser (visible by default so operator can solve CAPTCHA if prompted)
         browser = p.chromium.launch(
             headless=headless,
-            args=["--start-maximized", "--disable-blink-features=AutomationControlled"]
+            args=["--start-maximized", "--disable-blink-features=AutomationControlled"],
+            proxy=proxy_config
         )
         context = browser.new_context(
             no_viewport=True,
