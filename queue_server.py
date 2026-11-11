@@ -895,15 +895,16 @@ def intake_page():
         <title>Appointment Intake & Live Slot Alerts</title>
         <style>
             :root { --primary: #2563eb; --primary-hover: #1d4ed8; --bg: #f8fafc; --card: #ffffff; --text: #0f172a; --border: #e2e8f0; }
-            body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; background: var(--bg); color: var(--text); margin: 0; padding: 2rem 1rem; }
-            .container { max-width: 800px; margin: 0 auto; display: grid; gap: 2rem; }
-            .card { background: var(--card); border-radius: 12px; padding: 2rem; box-shadow: 0 4px 6px -1px rgb(0 0 0 / 0.1); border: 1px solid var(--border); }
+            * { box-sizing: border-box; }
+            body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; background: var(--bg); color: var(--text); margin: 0; padding: 2rem 1rem; -webkit-font-smoothing: antialiased; }
+            .container { max-width: 800px; margin: 0 auto; display: grid; gap: 1.5rem; }
+            .card { background: var(--card); border-radius: 12px; padding: 2rem; box-shadow: 0 4px 6px -1px rgb(0 0 0 / 0.08); border: 1px solid var(--border); }
             h1, h2 { margin-top: 0; color: #1e293b; }
             .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; }
             label { display: block; font-size: 0.875rem; font-weight: 600; margin-bottom: 0.35rem; color: #475569; }
-            input, select, textarea { width: 100%; padding: 0.65rem 0.75rem; border: 1px solid var(--border); border-radius: 6px; box-sizing: border-box; font-size: 0.95rem; }
+            input, select, textarea { width: 100%; padding: 0.7rem 0.85rem; border: 1px solid var(--border); border-radius: 8px; font-size: 0.95rem; background: #ffffff; transition: border-color 0.15s, box-shadow 0.15s; }
             input:focus, select:focus { outline: none; border-color: var(--primary); box-shadow: 0 0 0 3px rgba(37,99,235,0.15); }
-            button { background: var(--primary); color: white; border: none; padding: 0.75rem 1.5rem; border-radius: 6px; font-weight: 600; cursor: pointer; font-size: 1rem; }
+            button { background: var(--primary); color: white; border: none; padding: 0.75rem 1.5rem; border-radius: 8px; font-weight: 600; cursor: pointer; font-size: 1rem; display: inline-flex; align-items: center; justify-content: center; min-height: 44px; transition: background 0.15s; }
             button:hover { background: var(--primary-hover); }
             .badge { display: inline-block; padding: 0.25rem 0.6rem; border-radius: 9999px; font-size: 0.8rem; font-weight: bold; text-transform: uppercase; }
             .badge-waiting { background: #fef3c7; color: #92400e; }
@@ -911,20 +912,41 @@ def intake_page():
             .badge-code_pending { background: #fce7f3; color: #9d174d; }
             .badge-booked { background: #dcfce7; color: #15803d; }
             .badge-failed { background: #fee2e2; color: #b91c1c; }
-            .alert { padding: 1rem; border-radius: 6px; margin-bottom: 1rem; font-size: 0.95rem; display: none; }
+            .alert { padding: 1rem; border-radius: 8px; margin-bottom: 1rem; font-size: 0.95rem; display: none; word-break: break-word; }
             .alert-error { background: #fee2e2; color: #991b1b; border: 1px solid #f87171; }
             .alert-success { background: #dcfce7; color: #166534; border: 1px solid #86efac; }
-            .nav-link { float: right; font-size: 0.9rem; color: var(--primary); text-decoration: none; font-weight: 600; }
-            .banner { background: linear-gradient(135deg, #1e3a8a, #3b82f6); color: white; border-radius: 12px; padding: 1.5rem 2rem; }
-            .banner h2 { color: white; margin-bottom: 0.5rem; }
+            .banner { background: linear-gradient(135deg, #1e3a8a, #3b82f6); color: white; border-radius: 12px; padding: 1.5rem 1.75rem; box-shadow: 0 4px 12px rgba(37, 99, 235, 0.25); }
+            .banner-top { display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.75rem; flex-wrap: wrap; gap: 0.5rem; }
+            .nav-link { font-size: 0.85rem; color: #ffffff; background: rgba(255,255,255,0.2); padding: 0.35rem 0.75rem; border-radius: 6px; text-decoration: none; font-weight: 600; transition: background 0.15s; }
+            .nav-link:hover { background: rgba(255,255,255,0.3); }
+            .track-row { display: flex; gap: 0.5rem; }
+
+            /* Mobile Responsive Styles */
+            @media (max-width: 640px) {
+                body { padding: 0.75rem 0.5rem; }
+                .container { gap: 1rem; }
+                .card { padding: 1.25rem 1rem; border-radius: 10px; }
+                .banner { padding: 1.25rem 1rem; border-radius: 10px; }
+                .banner h2 { font-size: 1.35rem; }
+                .banner-top { flex-direction: column-reverse; align-items: stretch; gap: 0.5rem; }
+                .nav-link { text-align: center; padding: 0.5rem; }
+                .grid-2 { grid-template-columns: 1fr; gap: 0.85rem; }
+                input, select, textarea { font-size: 16px; padding: 0.75rem; } /* Prevents iOS auto-zoom */
+                button[type="submit"] { width: 100%; font-size: 1.05rem; }
+                .track-row { flex-direction: column; }
+                .track-row button { width: 100%; }
+            }
         </style>
     </head>
     <body>
         <div class="container">
             <div class="banner">
-                <a href="/admin" class="nav-link" style="color: #dbeafe;">👉 Go to Admin Control Board</a>
-                <h2>📡 Extranjería Live Appointment Alerts</h2>
-                <p style="margin: 0; opacity: 0.9;">Submit your details to enter the assisted queue, or monitor live slot openings via our Telegram broadcast channel.</p>
+                <div class="banner-top">
+                    <span style="font-size: 0.8rem; text-transform: uppercase; letter-spacing: 0.05em; opacity: 0.9;">🇪🇸 Sistema Oficial Asistido</span>
+                    <a href="/admin" class="nav-link">⚙️ Control Board (Admin) →</a>
+                </div>
+                <h2 style="margin: 0 0 0.5rem; color: white;">📡 Extranjería Live Appointment Alerts</h2>
+                <p style="margin: 0; opacity: 0.9; font-size: 0.95rem; line-height: 1.4;">Submit your details to enter the automated booking queue, or monitor live slot openings across all provinces in Spain.</p>
             </div>
 
             <!-- LIVE OPEN APPOINTMENTS BANNER -->
@@ -942,8 +964,8 @@ def intake_page():
             </div>
 
             <div class="card">
-                <h1>📋 New Appointment Request</h1>
-                <p style="color: #64748b; margin-bottom: 1.5rem;">Submit applicant information into the queue.</p>
+                <h1 style="font-size: 1.5rem; margin-bottom: 0.35rem;">📋 New Appointment Request</h1>
+                <p style="color: #64748b; margin-bottom: 1.5rem; font-size: 0.9rem;">Submit applicant information into the queue. Slots are claimed automatically when detected.</p>
                 
                 <div id="alertBox" class="alert"></div>
 
@@ -1008,12 +1030,12 @@ def intake_page():
             </div>
 
             <div class="card">
-                <h2>🔍 Track Existing Order</h2>
-                <div style="display: flex; gap: 0.5rem;">
+                <h2 style="font-size: 1.3rem;">🔍 Track Existing Order</h2>
+                <div class="track-row">
                     <input type="text" id="trackId" placeholder="Enter Order ID (e.g. ORDER-514792)">
                     <button type="button" onclick="trackOrder()">Lookup</button>
                 </div>
-                <div id="trackResult" style="margin-top: 1rem; display: none; padding: 1rem; background: #f1f5f9; border-radius: 6px;"></div>
+                <div id="trackResult" style="margin-top: 1rem; display: none; padding: 1rem; background: #f1f5f9; border-radius: 8px; font-size: 0.9rem; line-height: 1.6;"></div>
             </div>
         </div>
 
@@ -1132,12 +1154,13 @@ def admin_page():
         <title>Control Board - Cita Previa & Telegram Broadcaster</title>
         <style>
             :root { --primary: #2563eb; --primary-hover: #1d4ed8; --bg: #f8fafc; --card: #ffffff; --text: #0f172a; --border: #e2e8f0; }
-            body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; background: var(--bg); margin: 0; padding: 1.5rem; color: var(--text); }
+            * { box-sizing: border-box; }
+            body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; background: var(--bg); margin: 0; padding: 1.5rem; color: var(--text); -webkit-font-smoothing: antialiased; }
             .header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 1.5rem; }
-            h1 { margin: 0; font-size: 1.6rem; }
-            .btn { background: var(--primary); color: white; padding: 0.5rem 1rem; border-radius: 6px; text-decoration: none; font-size: 0.9rem; font-weight: bold; border: none; cursor: pointer; display: inline-flex; align-items: center; gap: 0.4rem; }
+            h1 { margin: 0; font-size: 1.5rem; }
+            .btn { background: var(--primary); color: white; padding: 0.5rem 1rem; border-radius: 6px; text-decoration: none; font-size: 0.9rem; font-weight: bold; border: none; cursor: pointer; display: inline-flex; align-items: center; justify-content: center; gap: 0.4rem; min-height: 38px; }
             .btn:hover { background: var(--primary-hover); }
-            .btn-action { padding: 0.35rem 0.65rem; font-size: 0.8rem; border-radius: 4px; background: #0284c7; color: white; border: none; cursor: pointer; }
+            .btn-action { padding: 0.4rem 0.75rem; font-size: 0.8rem; border-radius: 6px; background: #0284c7; color: white; border: none; cursor: pointer; display: inline-flex; align-items: center; justify-content: center; min-height: 34px; font-weight: 600; }
             .btn-action:hover { background: #0369a1; }
             .btn-success { background: #16a34a; }
             .btn-success:hover { background: #15803d; }
@@ -1146,28 +1169,29 @@ def admin_page():
             .btn-secondary { background: #64748b; }
             .btn-secondary:hover { background: #475569; }
 
-            .tabs { display: flex; gap: 0.5rem; margin-bottom: 1.5rem; border-bottom: 2px solid #e2e8f0; padding-bottom: 0.5rem; }
-            .tab-btn { background: none; border: none; padding: 0.6rem 1.2rem; font-size: 0.95rem; font-weight: 600; color: #64748b; cursor: pointer; border-radius: 6px; }
+            .tabs { display: flex; gap: 0.5rem; margin-bottom: 1.5rem; border-bottom: 2px solid #e2e8f0; padding-bottom: 0.5rem; overflow-x: auto; white-space: nowrap; -webkit-overflow-scrolling: touch; }
+            .tab-btn { background: none; border: none; padding: 0.6rem 1.1rem; font-size: 0.95rem; font-weight: 600; color: #64748b; cursor: pointer; border-radius: 6px; flex-shrink: 0; transition: background 0.15s, color 0.15s; }
             .tab-btn.active { background: #eff6ff; color: var(--primary); }
 
             .tab-content { display: none; }
             .tab-content.active { display: block; }
 
-            .stats { display: flex; gap: 1rem; margin-bottom: 1.5rem; }
-            .stat-card { background: white; padding: 1rem; border-radius: 8px; flex: 1; border: 1px solid var(--border); box-shadow: 0 1px 3px rgba(0,0,0,0.05); }
-            .stat-title { font-size: 0.8rem; text-transform: uppercase; color: #64748b; font-weight: 600; }
+            .stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap: 0.75rem; margin-bottom: 1.5rem; }
+            .stat-card { background: white; padding: 0.9rem 1rem; border-radius: 8px; border: 1px solid var(--border); box-shadow: 0 1px 3px rgba(0,0,0,0.05); }
+            .stat-title { font-size: 0.75rem; text-transform: uppercase; color: #64748b; font-weight: 700; letter-spacing: 0.04em; }
             .stat-value { font-size: 1.5rem; font-weight: bold; margin-top: 0.25rem; }
 
-            .card { background: white; border-radius: 8px; padding: 1.25rem; margin-bottom: 1.5rem; border: 1px solid var(--border); box-shadow: 0 1px 3px rgba(0,0,0,0.05); }
+            .card { background: white; border-radius: 10px; padding: 1.25rem; margin-bottom: 1.5rem; border: 1px solid var(--border); box-shadow: 0 1px 3px rgba(0,0,0,0.05); }
             .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; }
             label { display: block; font-size: 0.85rem; font-weight: 600; margin-bottom: 0.35rem; color: #475569; }
-            input, select { width: 100%; padding: 0.55rem 0.75rem; border: 1px solid #cbd5e1; border-radius: 6px; box-sizing: border-box; font-size: 0.9rem; }
+            input, select { width: 100%; padding: 0.65rem 0.75rem; border: 1px solid #cbd5e1; border-radius: 6px; font-size: 0.9rem; }
 
-            table { width: 100%; border-collapse: collapse; background: white; border-radius: 8px; overflow: hidden; border: 1px solid var(--border); margin-bottom: 1.5rem; }
-            th, td { padding: 0.75rem 1rem; text-align: left; border-bottom: 1px solid var(--border); font-size: 0.9rem; }
-            th { background: #f1f5f9; color: #475569; font-weight: 600; }
+            .table-responsive { width: 100%; overflow-x: auto; -webkit-overflow-scrolling: touch; border-radius: 8px; border: 1px solid var(--border); margin-bottom: 1.5rem; background: white; }
+            table { width: 100%; border-collapse: collapse; min-width: 720px; }
+            th, td { padding: 0.75rem 0.9rem; text-align: left; border-bottom: 1px solid var(--border); font-size: 0.875rem; }
+            th { background: #f8fafc; color: #475569; font-weight: 600; white-space: nowrap; }
 
-            .badge { display: inline-block; padding: 0.2rem 0.5rem; border-radius: 9999px; font-size: 0.75rem; font-weight: bold; text-transform: uppercase; }
+            .badge { display: inline-block; padding: 0.2rem 0.5rem; border-radius: 9999px; font-size: 0.75rem; font-weight: bold; text-transform: uppercase; white-space: nowrap; }
             .badge-waiting { background: #fef3c7; color: #92400e; }
             .badge-searching { background: #e0f2fe; color: #0369a1; }
             .badge-code_pending { background: #fce7f3; color: #9d174d; }
@@ -1186,18 +1210,52 @@ def admin_page():
                 100% { opacity: 1; }
             }
 
-            .alert-box { padding: 0.75rem 1rem; border-radius: 6px; margin-bottom: 1rem; font-size: 0.9rem; display: none; }
+            .alert-box { padding: 0.75rem 1rem; border-radius: 6px; margin-bottom: 1rem; font-size: 0.9rem; display: none; word-break: break-word; }
             .alert-box.success { background: #dcfce7; color: #15803d; border: 1px solid #86efac; display: block; }
             .alert-box.error { background: #fee2e2; color: #991b1b; border: 1px solid #f87171; display: block; }
+
+            /* Mobile Responsive Styles */
+            @media (max-width: 768px) {
+                body { padding: 0.75rem 0.5rem; }
+                .header { flex-direction: column; align-items: stretch; gap: 0.85rem; margin-bottom: 1rem; }
+                .header h1 { font-size: 1.25rem; line-height: 1.3; }
+                .header-actions { display: flex; gap: 0.5rem; width: 100%; }
+                .header-actions .btn { flex: 1; justify-content: center; }
+
+                .tabs { padding-bottom: 0.4rem; gap: 0.25rem; }
+                .tab-btn { padding: 0.5rem 0.75rem; font-size: 0.85rem; }
+
+                .stats { grid-template-columns: repeat(2, 1fr); gap: 0.5rem; }
+                .stats .stat-card:last-child { grid-column: span 2; }
+                .stat-card { padding: 0.75rem; }
+                .stat-value { font-size: 1.3rem; }
+
+                .card { padding: 1rem; margin-bottom: 1rem; border-radius: 10px; }
+                .grid-2 { grid-template-columns: 1fr; gap: 0.75rem; }
+                input, select { font-size: 16px; padding: 0.7rem; }
+
+                .toolbar-responsive { flex-direction: column; align-items: stretch !important; gap: 0.75rem !important; }
+                .toolbar-responsive input#citySearch { width: 100% !important; font-size: 16px; }
+                .filter-pills { display: flex; width: 100%; gap: 0.25rem; }
+                .filter-pills button { flex: 1; text-align: center; padding: 0.45rem 0.2rem; font-size: 0.75rem; }
+                .toolbar-actions { width: 100%; margin-left: 0 !important; display: flex; flex-direction: column; gap: 0.4rem; }
+                .toolbar-actions button { width: 100%; justify-content: center; padding: 0.55rem; }
+
+                .card-footer-responsive { flex-direction: column; align-items: stretch !important; gap: 0.75rem !important; }
+                .card-footer-responsive button { width: 100% !important; margin-left: 0 !important; justify-content: center; }
+
+                .proxy-actions { flex-direction: column !important; }
+                .proxy-actions button { width: 100% !important; justify-content: center; }
+            }
         </style>
     </head>
     <body>
         <div class="header">
             <div>
                 <h1>📦 Control Board: Appointments & Telegram Broadcaster</h1>
-                <p style="margin: 0.25rem 0 0; color: #64748b;">Manage customer booking queue and live slot broadcast scanners.</p>
+                <p style="margin: 0.25rem 0 0; color: #64748b; font-size: 0.9rem;">Manage customer booking queue and live slot broadcast scanners.</p>
             </div>
-            <div>
+            <div class="header-actions">
                 <a href="/" class="btn btn-secondary">+ Customer Intake</a>
                 <button onclick="refreshAll()" class="btn">🔄 Refresh</button>
             </div>
@@ -1216,22 +1274,24 @@ def admin_page():
 
             <div class="stats" id="statsRow"></div>
 
-            <table>
-                <thead>
-                    <tr>
-                        <th>Order ID</th>
-                        <th>Applicant Name</th>
-                        <th>Document</th>
-                        <th>Procedure & Province</th>
-                        <th>Contact</th>
-                        <th>Current Status</th>
-                        <th>Actions & Status</th>
-                    </tr>
-                </thead>
-                <tbody id="ordersTableBody">
-                    <tr><td colspan="7" style="text-align: center; color: #94a3b8;">Loading orders...</td></tr>
-                </tbody>
-            </table>
+            <div class="table-responsive">
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Order ID</th>
+                            <th>Applicant Name</th>
+                            <th>Document</th>
+                            <th>Procedure & Province</th>
+                            <th>Contact</th>
+                            <th>Current Status</th>
+                            <th>Actions & Status</th>
+                        </tr>
+                    </thead>
+                    <tbody id="ordersTableBody">
+                        <tr><td colspan="7" style="text-align: center; color: #94a3b8;">Loading orders...</td></tr>
+                    </tbody>
+                </table>
+            </div>
         </div>
 
         <!-- TAB 2: LIVE MONITOR & TELEGRAM BROADCAST -->
@@ -1273,7 +1333,7 @@ def admin_page():
                         <small style="color: #64748b;" id="proxyStatusNotice">Format: http://user:pass@host:port or socks5://host:port</small>
                     </div>
                     <div style="display: flex; flex-direction: column; justify-content: flex-end;">
-                        <div style="display: flex; gap: 0.5rem; flex-wrap: wrap;">
+                        <div style="display: flex; gap: 0.5rem; flex-wrap: wrap;" class="proxy-actions">
                             <button class="btn" onclick="saveProxySettings()" style="flex: 1;">💾 Save Proxy</button>
                             <button class="btn btn-action" style="background: #0284c7; flex: 1.2;" onclick="testPortalConnectionNow()">⚡ Test Portal Connection</button>
                             <button class="btn btn-action" style="background: #8b5cf6; flex: 1.2;" onclick="autoFindFreeProxy()">🔍 Auto-Find Free ES Proxy</button>
@@ -1302,7 +1362,7 @@ def admin_page():
                         <small style="color: #64748b;">Supports public channels (@name), private groups (-100...), or user chat IDs.</small>
                     </div>
                 </div>
-                <div style="margin-top: 1rem; display: flex; gap: 0.5rem; align-items: center;">
+                <div style="margin-top: 1rem; display: flex; gap: 0.5rem; align-items: center;" class="card-footer-responsive">
                     <label style="display: flex; align-items: center; gap: 0.5rem; margin: 0; cursor: pointer;">
                         <input type="checkbox" id="tgEnabled" style="width: auto;"> <b>Enable Telegram Alerts</b>
                     </label>
@@ -1350,34 +1410,36 @@ def admin_page():
                 </div>
 
                 <!-- Search & Filters Toolbar -->
-                <div style="display: flex; gap: 0.5rem; align-items: center; margin-bottom: 1rem; flex-wrap: wrap;">
+                <div class="toolbar-responsive" style="display: flex; gap: 0.5rem; align-items: center; margin-bottom: 1rem; flex-wrap: wrap;">
                     <input type="text" id="citySearch" placeholder="🔍 Search city (e.g. Madrid, Barcelona)..." style="width: 240px; padding: 0.45rem 0.75rem;" oninput="filterMonitors()">
-                    <div style="display: flex; gap: 0.25rem;">
+                    <div class="filter-pills" style="display: flex; gap: 0.25rem;">
                         <button class="btn-action" id="tabFilterAll" style="background: #2563eb;" onclick="setMonitorFilter('all')">All (<span id="badgeTotalCities">0</span>)</button>
                         <button class="btn-action" id="tabFilterOpen" style="background: #16a34a; opacity: 0.7;" onclick="setMonitorFilter('available')">🟢 Open Now (<span id="badgeOpenCities">0</span>)</button>
                         <button class="btn-action" id="tabFilterClosed" style="background: #64748b; opacity: 0.7;" onclick="setMonitorFilter('no_slots')">⚪ Closed (<span id="badgeClosedCities">0</span>)</button>
                     </div>
-                    <div style="margin-left: auto; display: flex; gap: 0.4rem; flex-wrap: wrap;">
+                    <div class="toolbar-actions" style="margin-left: auto; display: flex; gap: 0.4rem; flex-wrap: wrap;">
                         <button class="btn btn-action" style="background: #7c3aed;" onclick="seedAllSpanishCities()">⚡ Add All 30+ Spanish Cities</button>
                         <button class="btn btn-action" style="background: #0284c7;" onclick="scanAllCitiesNow()">🚀 Scan All Cities Now</button>
                     </div>
                 </div>
 
-                <table>
-                    <thead>
-                        <tr>
-                            <th>Target</th>
-                            <th>Status</th>
-                            <th>Last Checked</th>
-                            <th>Last Alert Sent</th>
-                            <th>Active</th>
-                            <th>Actions</th>
-                        </tr>
-                    </thead>
-                    <tbody id="monitorsTableBody">
-                        <tr><td colspan="6" style="text-align: center; color: #94a3b8;">Loading monitored targets...</td></tr>
-                    </tbody>
-                </table>
+                <div class="table-responsive">
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>Target</th>
+                                <th>Status</th>
+                                <th>Last Checked</th>
+                                <th>Last Alert Sent</th>
+                                <th>Active</th>
+                                <th>Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody id="monitorsTableBody">
+                            <tr><td colspan="6" style="text-align: center; color: #94a3b8;">Loading monitored targets...</td></tr>
+                        </tbody>
+                    </table>
+                </div>
             </div>
         </div>
 
