@@ -976,8 +976,39 @@ def intake_page():
                             <input type="text" id="name" required placeholder="e.g. MD MUSTAK AHMED">
                         </div>
                         <div>
-                            <label>Citizenship *</label>
-                            <input type="text" id="citizenship" required placeholder="e.g. Bangladesh">
+                            <label>Citizenship / Nationality *</label>
+                            <input type="text" id="citizenship" list="citizenshipList" required placeholder="e.g. Pakistan, Bangladesh, Colombia">
+                            <datalist id="citizenshipList">
+                                <option value="Pakistan">
+                                <option value="Bangladesh">
+                                <option value="India">
+                                <option value="Morocco">
+                                <option value="Colombia">
+                                <option value="Venezuela">
+                                <option value="Peru">
+                                <option value="Honduras">
+                                <option value="Ecuador">
+                                <option value="Dominican Republic">
+                                <option value="Argentina">
+                                <option value="Brazil">
+                                <option value="Paraguay">
+                                <option value="Bolivia">
+                                <option value="Cuba">
+                                <option value="Chile">
+                                <option value="Uruguay">
+                                <option value="Ukraine">
+                                <option value="United Kingdom">
+                                <option value="China">
+                                <option value="Senegal">
+                                <option value="Algeria">
+                                <option value="Nigeria">
+                                <option value="Philippines">
+                                <option value="United States">
+                                <option value="Italy">
+                                <option value="France">
+                                <option value="Germany">
+                                <option value="Romania">
+                            </datalist>
                         </div>
                     </div>
 
@@ -1009,18 +1040,24 @@ def intake_page():
 
                     <div class="grid-2" style="margin-top: 1rem;">
                         <div>
-                            <label>Province *</label>
-                            <input type="text" id="province" required value="Barcelona">
+                            <label>Province / City *</label>
+                            <select id="provinceSelect" required onchange="onProvinceChanged(this.value)">
+                            </select>
+                            <input type="text" id="customProvinceInput" placeholder="✍️ Type custom city / province..." style="margin-top: 0.4rem; display: none;">
                         </div>
                         <div>
-                            <label>Office (Optional)</label>
-                            <input type="text" id="office" placeholder="e.g. Rambla Guipuscoa 74">
+                            <label>Office / Comisaría</label>
+                            <select id="officeSelect" onchange="onOfficeChanged(this.value)">
+                            </select>
+                            <input type="text" id="customOfficeInput" placeholder="✍️ Type custom office / comisaría..." style="margin-top: 0.4rem; display: none;">
                         </div>
                     </div>
 
                     <div style="margin-top: 1rem;">
                         <label>Procedure (Trámite) *</label>
-                        <input type="text" id="procedure" required value="POLICIA-TOMA DE HUELLA">
+                        <select id="procedureSelect" required onchange="onProcChanged(this.value)">
+                        </select>
+                        <input type="text" id="customProcInput" placeholder="✍️ Type custom procedure..." style="margin-top: 0.4rem; display: none;">
                     </div>
 
                     <div style="margin-top: 1.5rem;">
@@ -1040,21 +1077,271 @@ def intake_page():
         </div>
 
         <script>
+            const SPANISH_PROVINCES = [
+                "Barcelona", "Madrid", "Valencia", "Alicante", "Málaga", "Sevilla", "Murcia", "Baleares", "Las Palmas", 
+                "Santa Cruz de Tenerife", "Zaragoza", "Cádiz", "Bizkaia", "Pontevedra", "Granada", "Tarragona", "Córdoba", 
+                "Girona", "Almería", "Guipúzcoa", "Toledo", "Badajoz", "Navarra", "Jaén", "Castellón", "Cantabria", "Huelva", 
+                "Valladolid", "Ciudad Real", "León", "Lleida", "Cáceres", "Albacete", "Burgos", "Álava", "Salamanca", "Lugo", 
+                "La Rioja", "Ourense", "Guadalajara", "Huesca", "Cuenca", "Zamora", "Palencia", "Ávila", "Segovia", "Teruel", 
+                "Soria", "Ceuta", "Melilla"
+            ];
+
+            const PROVINCE_OFFICES = {
+                "Barcelona": [
+                    { value: "", label: "🌐 Cualquier oficina (Any / First Available)" },
+                    { value: "Barcelona - Todas las oficinas", label: "🏢 Barcelona - Todas las oficinas (All Barcelona Offices)" },
+                    { value: "CNP BARCELONA - RAMBLA GUIPÚZCOA 74", label: "CNP Barcelona - Rambla de Guipúzcoa, 74" },
+                    { value: "CNP BARCELONA - MALLORCA 213", label: "CNP Barcelona - Mallorca, 213" },
+                    { value: "CNP BARCELONA - GUADALAJARA 1 (GRÀCIA)", label: "CNP Barcelona - Guadalajara, 1 (Gràcia)" },
+                    { value: "CNP HOSPITALET - MONTSENY 137", label: "CNP L'Hospitalet de Llobregat - Montseny, 137" },
+                    { value: "CNP BADALONA - AVDA. DELS VENTS 9-11", label: "CNP Badalona - Avda. dels Vents, 9-11" },
+                    { value: "CNP CORNELLÀ DE LLOBREGAT - AV. SANT ILDEFONS", label: "CNP Cornellà de Llobregat - Av. Sant Ildefons" },
+                    { value: "CNP MATARÓ - C/ DELS JORDI 1", label: "CNP Mataró - Carrer dels Jordi, 1" },
+                    { value: "CNP SABADELL - C/ BATLLORI 37", label: "CNP Sabadell - Carrer Batllori, 37" },
+                    { value: "CNP TERRASSA - C/ BALMES 2", label: "CNP Terrassa - Carrer Balmes, 2" },
+                    { value: "CNP SANT FELIU DE LLOBREGAT - C/ CARLES BUÏGAS", label: "CNP Sant Feliu de Llobregat - C/ Carles Buïgas" },
+                    { value: "CNP SANTA COLOMA DE GRAMENET - C/ IRLANDA", label: "CNP Santa Coloma de Gramenet - C/ Irlanda" },
+                    { value: "CNP GRANOLLERS - C/ JOSEP UMBERT", label: "CNP Granollers - C/ Josep Umbert, 126" },
+                    { value: "CNP VIC - BISBE MORGADES 4", label: "CNP Vic - Bisbe Morgades, 4" },
+                    { value: "CNP MANRESA - C/ SOLANA 34", label: "CNP Manresa - C/ Solana, 34" },
+                    { value: "CNP SANT BOI DE LLOBREGAT", label: "CNP Sant Boi de Llobregat - Mossèn Jacint Verdaguer" },
+                    { value: "CNP CASTELLDEFELS", label: "CNP Castelldefels - Plaça Esperança" },
+                    { value: "CNP IGUALADA", label: "CNP Igualada - C/ Prat de la Riba" },
+                    { value: "CNP VILANOVA I LA GELTRÚ", label: "CNP Vilanova i la Geltrú - C/ Vapor" }
+                ],
+                "Madrid": [
+                    { value: "", label: "🌐 Cualquier oficina (Any / First Available)" },
+                    { value: "Madrid - Todas las oficinas", label: "🏢 Madrid - Todas las oficinas (All Madrid Offices)" },
+                    { value: "CNP MADRID - AVDA. DE LOS POBLADOS S/N (ALUCHE)", label: "CNP Madrid - Avda. de los Poblados s/n (Aluche)" },
+                    { value: "CNP MADRID - PADRE PIQUER 18", label: "CNP Madrid - Padre Piquer, 18" },
+                    { value: "CNP MADRID - SILVA 10", label: "CNP Madrid - C/ Silva, 10" },
+                    { value: "CNP MADRID - GARCÍA DE PAREDES 65", label: "CNP Madrid - García de Paredes, 65" },
+                    { value: "CNP MADRID - SAN FELIPE 7", label: "CNP Madrid - C/ San Felipe, 7" },
+                    { value: "CNP ALCALÁ DE HENARES - AV. MECO", label: "CNP Alcalá de Henares - Av. Meco" },
+                    { value: "CNP ALCOBENDAS - AV. DE ESPAÑA", label: "CNP Alcobendas - Av. de España" },
+                    { value: "CNP ALCORCÓN - C/ ALFREDO NOBEL", label: "CNP Alcorcón - C/ Alfredo Nobel" },
+                    { value: "CNP COSLADA - C/ CANARIAS", label: "CNP Coslada - C/ Canarias" },
+                    { value: "CNP FUENLABRADA - C/ ÁNGELES", label: "CNP Fuenlabrada - C/ de los Ángeles" },
+                    { value: "CNP GETAFE - C/ CHURRUCA", label: "CNP Getafe - C/ Churruca" },
+                    { value: "CNP LEGANÉS - AV. DEL DOS DE MAYO", label: "CNP Leganés - Av. del Dos de Mayo" },
+                    { value: "CNP MÓSTOLES - C/ PINTOR VELÁZQUEZ", label: "CNP Móstoles - C/ Pintor Velázquez" },
+                    { value: "CNP PARLA - AV. JUAN CARLOS I", label: "CNP Parla - Av. Juan Carlos I" },
+                    { value: "CNP POZUELO DE ALARCÓN", label: "CNP Pozuelo de Alarcón - Camino de las Huertas" },
+                    { value: "CNP TORREJÓN DE ARDOZ", label: "CNP Torrejón de Ardoz - C/ Hilados" }
+                ],
+                "Valencia": [
+                    { value: "", label: "🌐 Cualquier oficina (Any / First Available)" },
+                    { value: "Valencia - Todas las oficinas", label: "🏢 Valencia - Todas las oficinas (All Valencia Offices)" },
+                    { value: "CNP VALENCIA - GRAN VÍA RAMÓN Y CAJAL 40", label: "CNP Valencia - Gran Vía Ramón y Cajal, 40" },
+                    { value: "CNP VALENCIA - ZAPADORES (BOMBER RAMÓN DUART)", label: "CNP Valencia - Zapadores (C/ Bomber Ramón Duart)" },
+                    { value: "CNP VALENCIA - PATRAIX (C/ DELS GRESTES)", label: "CNP Valencia - Patraix (C/ dels Grestes)" },
+                    { value: "CNP GANDÍA - CIUDAD DE LAVAL", label: "CNP Gandía - Ciudad de Laval" },
+                    { value: "CNP SAGUNTO - C/ PROGRÉS", label: "CNP Sagunto - C/ Progrés" },
+                    { value: "CNP ALZIRA - C/ RIU XÚQUER", label: "CNP Alzira - C/ Riu Xúquer" },
+                    { value: "CNP XIRIVELLA - C/ SANT JOAN BAPTISTA", label: "CNP Xirivella - C/ Sant Joan Baptista" },
+                    { value: "CNP MISLATA - C/ DE LA SANG", label: "CNP Mislata - C/ de la Sang" },
+                    { value: "CNP ONTINYENT - PLAÇA DE LA CORONACIÓ", label: "CNP Ontinyent - Plaça de la Coronació" },
+                    { value: "CNP PATERNA", label: "CNP Paterna - C/ Major" },
+                    { value: "CNP TORRENT", label: "CNP Torrent - C/ Santa Elena" }
+                ],
+                "Alicante": [
+                    { value: "", label: "🌐 Cualquier oficina (Any / First Available)" },
+                    { value: "Alicante - Todas las oficinas", label: "🏢 Alicante - Todas las oficinas (All Alicante Offices)" },
+                    { value: "CNP ALICANTE - CAMPO DE MIRRA 6", label: "CNP Alicante - C/ Campo de Mirra, 6" },
+                    { value: "CNP ALICANTE - ISABEL LA CATÓLICA 25", label: "CNP Alicante - C/ Isabel la Católica, 25" },
+                    { value: "CNP ELCHE - C/ ABOGADOS DE ATOCHA", label: "CNP Elche - C/ Abogados de Atocha" },
+                    { value: "CNP BENIDORM - C/ APOLO XI 31", label: "CNP Benidorm - C/ Apolo XI, 31" },
+                    { value: "CNP TORREVIEJA - C/ MALDONADO 57", label: "CNP Torrevieja - C/ Maldonado, 57" },
+                    { value: "CNP ORIHUELA - C/ SOL 34", label: "CNP Orihuela - C/ Sol, 34" },
+                    { value: "CNP DENIA - C/ CASTELL D'OLIMBROI", label: "CNP Denia - C/ Castell d'Olimbroi" },
+                    { value: "CNP ALCOY - C/ PERÚ", label: "CNP Alcoy - C/ Perú" },
+                    { value: "CNP ELDA - C/ LUIS GALIANO", label: "CNP Elda - C/ Luis Galiano" }
+                ],
+                "Málaga": [
+                    { value: "", label: "🌐 Cualquier oficina (Any / First Available)" },
+                    { value: "Málaga - Todas las oficinas", label: "🏢 Málaga - Todas las oficinas (All Málaga Offices)" },
+                    { value: "CNP MÁLAGA - MAURICIO MORO PARETO 13", label: "CNP Málaga - Mauricio Moro Pareto, 13" },
+                    { value: "CNP MÁLAGA - PLAZA MANUEL AZAÑA 3", label: "CNP Málaga - Plaza Manuel Azaña, 3" },
+                    { value: "CNP MARBELLA - AV. ARIAS DE VELASCO", label: "CNP Marbella - Av. Arias de Velasco" },
+                    { value: "CNP FUENGIROLA - C/ CONDAL", label: "CNP Fuengirola - C/ Condal" },
+                    { value: "CNP TORREMOLINOS - C/ SKAL", label: "CNP Torremolinos - C/ Skal" },
+                    { value: "CNP ESTEPONA - C/ VALLE INCLÁN", label: "CNP Estepona - C/ Valle Inclán" },
+                    { value: "CNP VÉLEZ-MÁLAGA", label: "CNP Vélez-Málaga - C/ Poeta Joaquín Lobato" },
+                    { value: "CNP RONDA", label: "CNP Ronda - C/ Lorenza Correa" }
+                ],
+                "Sevilla": [
+                    { value: "", label: "🌐 Cualquier oficina (Any / First Available)" },
+                    { value: "Sevilla - Todas las oficinas", label: "🏢 Sevilla - Todas las oficinas (All Sevilla Offices)" },
+                    { value: "CNP SEVILLA - PLAZA DE ESPAÑA (TORRE NORTE)", label: "CNP Sevilla - Plaza de España (Torre Norte)" },
+                    { value: "CNP SEVILLA - TABLADA (AV. DE LA MAESTRANZA)", label: "CNP Sevilla - Tablada (Av. de la Maestranza)" },
+                    { value: "CNP ALCALÁ DE GUADAÍRA", label: "CNP Alcalá de Guadaíra - C/ Pepe Corzo" },
+                    { value: "CNP DOS HERMANAS", label: "CNP Dos Hermanas - C/ Luis Ortega Bru" },
+                    { value: "CNP ÉCIJA", label: "CNP Écija - C/ Castellar" }
+                ],
+                "Murcia": [
+                    { value: "", label: "🌐 Cualquier oficina (Any / First Available)" },
+                    { value: "Murcia - Todas las oficinas", label: "🏢 Murcia - Todas las oficinas" },
+                    { value: "CNP MURCIA - C/ ISABEL LA CATÓLICA 25", label: "CNP Murcia - C/ Isabel la Católica, 25" },
+                    { value: "CNP CARTAGENA - C/ MENÉNDEZ PELAYO", label: "CNP Cartagena - C/ Menéndez Pelayo" },
+                    { value: "CNP LORCA", label: "CNP Lorca - C/ Alameda de Cervantes" },
+                    { value: "CNP MOLINA DE SEGURA", label: "CNP Molina de Segura" }
+                ],
+                "Baleares": [
+                    { value: "", label: "🌐 Cualquier oficina (Any / First Available)" },
+                    { value: "Baleares - Todas las oficinas", label: "🏢 Baleares - Todas las oficinas" },
+                    { value: "CNP PALMA DE MALLORCA - SIMÓ BALLESTER", label: "CNP Palma de Mallorca - C/ Simó Ballester, 8" },
+                    { value: "CNP PALMA - C/ FELICIÀ FUSTER", label: "CNP Palma - C/ Felicià Fuster" },
+                    { value: "CNP IBIZA - AV. DE LA PAZ", label: "CNP Ibiza - Avda. de la Paz" },
+                    { value: "CNP MANACOR", label: "CNP Manacor - Rambla del Rei En Jaume" },
+                    { value: "CNP MAÓ (MENORCA)", label: "CNP Maó - Menorca" },
+                    { value: "CNP CIUTADELLA", label: "CNP Ciutadella - Menorca" }
+                ],
+                "Zaragoza": [
+                    { value: "", label: "🌐 Cualquier oficina (Any / First Available)" },
+                    { value: "Zaragoza - Todas las oficinas", label: "🏢 Zaragoza - Todas las oficinas" },
+                    { value: "CNP ZARAGOZA - COMISARÍA DELICIAS", label: "CNP Zaragoza - Delicias (Av. de Valencia)" },
+                    { value: "CNP ZARAGOZA - COMISARÍA ACTUR", label: "CNP Zaragoza - Actur (C/ Gertrudis Gómez)" },
+                    { value: "CNP ZARAGOZA - SAN JOSÉ", label: "CNP Zaragoza - San José (Paseo del Canal)" },
+                    { value: "CNP CALATAYUD", label: "CNP Calatayud" }
+                ],
+                "Tarragona": [
+                    { value: "", label: "🌐 Cualquier oficina (Any / First Available)" },
+                    { value: "Tarragona - Todas las oficinas", label: "🏢 Tarragona - Todas las oficinas" },
+                    { value: "CNP TARRAGONA - PLAÇA D'ERNEST LLUCH", label: "CNP Tarragona - Plaça d'Ernest Lluch, 4" },
+                    { value: "CNP REUS", label: "CNP Reus - C/ Gaudí" },
+                    { value: "CNP TORTOSA", label: "CNP Tortosa - Plaça de la Pau" }
+                ],
+                "Girona": [
+                    { value: "", label: "🌐 Cualquier oficina (Any / First Available)" },
+                    { value: "Girona - Todas las oficinas", label: "🏢 Girona - Todas las oficinas" },
+                    { value: "CNP GIRONA - AV. JAUME I", label: "CNP Girona - Av. Jaume I, 84" },
+                    { value: "CNP FIGUERES", label: "CNP Figueres - C/ Pep Ventura" },
+                    { value: "CNP LLORET DE MAR", label: "CNP Lloret de Mar" },
+                    { value: "CNP SANT FELIU DE GUÍXOLS", label: "CNP Sant Feliu de Guíxols" }
+                ]
+            };
+
+            const PROCEDURES_LIST = [
+                { value: "POLICIA-TOMA DE HUELLA (EXPEDICIÓN DE TARJETA) INICIAL, RENOVACIÓN, DUPLICADO Y LEY 14/2013", label: "POLICÍA - Toma de Huellas (Expedición TIE / Renovación / Duplicado)" },
+                { value: "POLICIA-RECOGIDA DE TARJETA DE IDENTIDAD DE EXTRANJERO (TIE)", label: "POLICÍA - Recogida de Tarjeta de Identidad de Extranjero (TIE)" },
+                { value: "POLICIA-ASIGNACIÓN DE NIE", label: "POLICÍA - Asignación de NIE" },
+                { value: "POLICIA-CERTIFICADOS (DE RESIDENCIA, DE NO RESIDENCIA Y DE CONCORDANCIA)", label: "POLICÍA - Certificados (Residencia, No Residencia, Concordancia)" },
+                { value: "POLICIA-CERTIFICADO DE REGISTRO DE CIUDADANO DE LA U.E.", label: "POLICÍA - Certificado de Registro de Ciudadano de la UE" },
+                { value: "POLICIA-AUTORIZACIÓN DE REGRESO", label: "POLICÍA - Autorización de Regreso" },
+                { value: "POLICIA-EXPEDICIÓN/RENOVACIÓN DE DOCUMENTOS DE SOLICITANTES DE ASILO", label: "POLICÍA - Renovación Documentos Asilo (Hoja Blanca / Tarjeta Roja)" },
+                { value: "POLICIA-SOLICITUD DE ASILO (PRIMERA CITA)", label: "POLICÍA - Solicitud de Asilo (Primera Cita)" },
+                { value: "POLICIA-CARTA DE INVITACIÓN", label: "POLICÍA - Carta de Invitación" },
+                { value: "POLICIA-TÍTULOS DE VIAJE", label: "POLICÍA - Títulos de Viaje" },
+                { value: "EXTRANJERÍA - SOLICITUD DE AUTORIZACIONES", label: "EXTRANJERÍA - Solicitud de Autorizaciones (Arraigo, Residencia Inicial)" },
+                { value: "EXTRANJERÍA - RENOVACIÓN DE AUTORIZACIONES", label: "EXTRANJERÍA - Renovación de Autorizaciones" },
+                { value: "__custom__", label: "✍️ Otro trámite (Specify custom)..." }
+            ];
+
+            function initDropdowns() {
+                const provSel = document.getElementById('provinceSelect');
+                provSel.innerHTML = SPANISH_PROVINCES.map(p => `<option value="${p}">${p}</option>`).join('') +
+                    `<option value="__custom__">✍️ Otra ciudad / provincia (Specify custom)...</option>`;
+                provSel.value = "Barcelona";
+
+                updateOffices('Barcelona');
+
+                const procSel = document.getElementById('procedureSelect');
+                procSel.innerHTML = PROCEDURES_LIST.map(p => `<option value="${p.value}">${p.label}</option>`).join('');
+                procSel.value = PROCEDURES_LIST[0].value;
+            }
+
+            function onProvinceChanged(prov) {
+                const customProv = document.getElementById('customProvinceInput');
+                if (prov === '__custom__') {
+                    customProv.style.display = 'block';
+                    customProv.required = true;
+                    customProv.focus();
+                    updateOffices(customProv.value.trim() || 'Custom');
+                } else {
+                    customProv.style.display = 'none';
+                    customProv.required = false;
+                    updateOffices(prov);
+                }
+            }
+
+            function updateOffices(prov) {
+                const offSel = document.getElementById('officeSelect');
+                const customOff = document.getElementById('customOfficeInput');
+                customOff.style.display = 'none';
+                customOff.required = false;
+
+                const officeList = PROVINCE_OFFICES[prov] || [
+                    { value: "", label: "🌐 Cualquier oficina (Any / First Available)" },
+                    { value: `${prov} - Todas las oficinas`, label: `🏢 ${prov} - Todas las oficinas (All Offices)` },
+                    { value: `CNP ${prov.toUpperCase()} - COMISARÍA PRINCIPAL`, label: `CNP ${prov} - Comisaría Principal` }
+                ];
+
+                offSel.innerHTML = officeList.map(o => `<option value="${o.value}">${o.label}</option>`).join('') +
+                    `<option value="__custom__">✍️ Otra oficina (Specify custom)...</option>`;
+                offSel.value = "";
+            }
+
+            function onOfficeChanged(val) {
+                const customOff = document.getElementById('customOfficeInput');
+                if (val === '__custom__') {
+                    customOff.style.display = 'block';
+                    customOff.required = true;
+                    customOff.focus();
+                } else {
+                    customOff.style.display = 'none';
+                    customOff.required = false;
+                }
+            }
+
+            function onProcChanged(val) {
+                const customProc = document.getElementById('customProcInput');
+                if (val === '__custom__') {
+                    customProc.style.display = 'block';
+                    customProc.required = true;
+                    customProc.focus();
+                } else {
+                    customProc.style.display = 'none';
+                    customProc.required = false;
+                }
+            }
+
             document.getElementById('orderForm').addEventListener('submit', async (e) => {
                 e.preventDefault();
                 const alertBox = document.getElementById('alertBox');
                 alertBox.style.display = 'none';
 
+                const provSel = document.getElementById('provinceSelect');
+                const province = provSel.value === '__custom__' ? document.getElementById('customProvinceInput').value.trim() : provSel.value;
+
+                const offSel = document.getElementById('officeSelect');
+                const office = offSel.value === '__custom__' ? document.getElementById('customOfficeInput').value.trim() : offSel.value;
+
+                const procSel = document.getElementById('procedureSelect');
+                const procedure = procSel.value === '__custom__' ? document.getElementById('customProcInput').value.trim() : procSel.value;
+
+                if (!province) {
+                    alertBox.className = 'alert alert-error';
+                    alertBox.innerText = 'Please select or enter a province / city.';
+                    alertBox.style.display = 'block';
+                    return;
+                }
+                if (!procedure) {
+                    alertBox.className = 'alert alert-error';
+                    alertBox.innerText = 'Please select or enter a procedure (trámite).';
+                    alertBox.style.display = 'block';
+                    return;
+                }
+
                 const payload = {
-                    name: document.getElementById('name').value,
-                    citizenship: document.getElementById('citizenship').value,
+                    name: document.getElementById('name').value.trim(),
+                    citizenship: document.getElementById('citizenship').value.trim(),
                     doc_type: document.getElementById('doc_type').value,
-                    doc_number: document.getElementById('doc_number').value,
-                    email: document.getElementById('email').value,
-                    phone: document.getElementById('phone').value,
-                    province: document.getElementById('province').value,
-                    office: document.getElementById('office').value,
-                    procedure: document.getElementById('procedure').value
+                    doc_number: document.getElementById('doc_number').value.trim(),
+                    email: document.getElementById('email').value.trim(),
+                    phone: document.getElementById('phone').value.trim(),
+                    province: province,
+                    office: office,
+                    procedure: procedure
                 };
 
                 try {
@@ -1073,6 +1360,7 @@ def intake_page():
                         alertBox.innerHTML = `<strong>Order Queued!</strong> Assigned ID: <code>${data.order_id}</code> (Status: waiting)`;
                         alertBox.style.display = 'block';
                         document.getElementById('orderForm').reset();
+                        initDropdowns();
                     }
                 } catch (err) {
                     alertBox.className = 'alert alert-error';
@@ -1129,12 +1417,26 @@ def intake_page():
             }
 
             function selectCity(city) {
-                const provInput = document.getElementById('province');
-                provInput.value = city;
-                provInput.scrollIntoView({ behavior: 'smooth' });
-                provInput.focus();
+                const provSel = document.getElementById('provinceSelect');
+                let found = false;
+                for (let i = 0; i < provSel.options.length; i++) {
+                    if (provSel.options[i].value.toLowerCase() === city.toLowerCase()) {
+                        provSel.selectedIndex = i;
+                        found = true;
+                        break;
+                    }
+                }
+                if (!found) {
+                    provSel.value = '__custom__';
+                    const customProv = document.getElementById('customProvinceInput');
+                    customProv.value = city;
+                }
+                onProvinceChanged(provSel.value);
+                provSel.scrollIntoView({ behavior: 'smooth' });
+                provSel.focus();
             }
 
+            initDropdowns();
             pollLiveOpen();
             setInterval(pollLiveOpen, 4000);
         </script>
@@ -1407,12 +1709,14 @@ def admin_page():
                 <div id="addMonitorForm" style="display: none; background: #f8fafc; padding: 1rem; border-radius: 8px; margin-bottom: 1rem; border: 1px solid var(--border);">
                     <div class="form-grid">
                         <div>
-                            <label>Province</label>
-                            <input type="text" id="newMonProvince" value="Barcelona" placeholder="e.g. Barcelona, Madrid, Valencia">
+                            <label>Province / City</label>
+                            <select id="newMonProvinceSelect" onchange="onAdminMonProvChange(this.value)"></select>
+                            <input type="text" id="newMonCustomProv" placeholder="✍️ Type custom city / province..." style="margin-top: 0.35rem; display: none;">
                         </div>
                         <div>
                             <label>Procedure (Trámite)</label>
-                            <input type="text" id="newMonProc" value="POLICIA-TOMA DE HUELLA" placeholder="e.g. POLICIA-TOMA DE HUELLA">
+                            <select id="newMonProcSelect" onchange="onAdminMonProcChange(this.value)"></select>
+                            <input type="text" id="newMonCustomProc" placeholder="✍️ Type custom procedure..." style="margin-top: 0.35rem; display: none;">
                         </div>
                     </div>
                     <div style="margin-top: 0.75rem; display: flex; gap: 0.5rem; justify-content: flex-end;">
@@ -1900,15 +2204,86 @@ def admin_page():
                 alert(`Starting automated booking for the next client waiting in ${prov}...`);
             }
 
+            const ADMIN_SPANISH_PROVINCES = [
+                "Barcelona", "Madrid", "Valencia", "Alicante", "Málaga", "Sevilla", "Murcia", "Baleares", "Las Palmas", 
+                "Santa Cruz de Tenerife", "Zaragoza", "Cádiz", "Bizkaia", "Pontevedra", "Granada", "Tarragona", "Córdoba", 
+                "Girona", "Almería", "Guipúzcoa", "Toledo", "Badajoz", "Navarra", "Jaén", "Castellón", "Cantabria", "Huelva", 
+                "Valladolid", "Ciudad Real", "León", "Lleida", "Cáceres", "Albacete", "Burgos", "Álava", "Salamanca", "Lugo", 
+                "La Rioja", "Ourense", "Guadalajara", "Huesca", "Cuenca", "Zamora", "Palencia", "Ávila", "Segovia", "Teruel", 
+                "Soria", "Ceuta", "Melilla"
+            ];
+
+            const ADMIN_PROCEDURES_LIST = [
+                { value: "POLICIA-TOMA DE HUELLA (EXPEDICIÓN DE TARJETA) INICIAL, RENOVACIÓN, DUPLICADO Y LEY 14/2013", label: "POLICÍA - Toma de Huellas (Expedición TIE / Renovación / Duplicado)" },
+                { value: "POLICIA-RECOGIDA DE TARJETA DE IDENTIDAD DE EXTRANJERO (TIE)", label: "POLICÍA - Recogida de Tarjeta de Identidad de Extranjero (TIE)" },
+                { value: "POLICIA-ASIGNACIÓN DE NIE", label: "POLICÍA - Asignación de NIE" },
+                { value: "POLICIA-CERTIFICADOS (DE RESIDENCIA, DE NO RESIDENCIA Y DE CONCORDANCIA)", label: "POLICÍA - Certificados (Residencia, No Residencia, Concordancia)" },
+                { value: "POLICIA-CERTIFICADO DE REGISTRO DE CIUDADANO DE LA U.E.", label: "POLICÍA - Certificado de Registro de Ciudadano de la UE" },
+                { value: "POLICIA-AUTORIZACIÓN DE REGRESO", label: "POLICÍA - Autorización de Regreso" },
+                { value: "POLICIA-EXPEDICIÓN/RENOVACIÓN DE DOCUMENTOS DE SOLICITANTES DE ASILO", label: "POLICÍA - Renovación Documentos Asilo (Hoja Blanca / Tarjeta Roja)" },
+                { value: "POLICIA-SOLICITUD DE ASILO (PRIMERA CITA)", label: "POLICÍA - Solicitud de Asilo (Primera Cita)" },
+                { value: "POLICIA-CARTA DE INVITACIÓN", label: "POLICÍA - Carta de Invitación" },
+                { value: "POLICIA-TÍTULOS DE VIAJE", label: "POLICÍA - Títulos de Viaje" },
+                { value: "EXTRANJERÍA - SOLICITUD DE AUTORIZACIONES", label: "EXTRANJERÍA - Solicitud de Autorizaciones (Arraigo, Residencia Inicial)" },
+                { value: "EXTRANJERÍA - RENOVACIÓN DE AUTORIZACIONES", label: "EXTRANJERÍA - Renovación de Autorizaciones" },
+                { value: "__custom__", label: "✍️ Otro trámite (Specify custom)..." }
+            ];
+
+            function initAdminDropdowns() {
+                const provSel = document.getElementById('newMonProvinceSelect');
+                if (provSel) {
+                    provSel.innerHTML = ADMIN_SPANISH_PROVINCES.map(p => `<option value="${p}">${p}</option>`).join('') +
+                        `<option value="__custom__">✍️ Otra ciudad / provincia (Specify custom)...</option>`;
+                    provSel.value = "Barcelona";
+                }
+
+                const procSel = document.getElementById('newMonProcSelect');
+                if (procSel) {
+                    procSel.innerHTML = ADMIN_PROCEDURES_LIST.map(p => `<option value="${p.value}">${p.label}</option>`).join('');
+                    procSel.value = ADMIN_PROCEDURES_LIST[0].value;
+                }
+            }
+
+            function onAdminMonProvChange(val) {
+                const customProv = document.getElementById('newMonCustomProv');
+                if (val === '__custom__') {
+                    customProv.style.display = 'block';
+                    customProv.focus();
+                } else {
+                    customProv.style.display = 'none';
+                }
+            }
+
+            function onAdminMonProcChange(val) {
+                const customProc = document.getElementById('newMonCustomProc');
+                if (val === '__custom__') {
+                    customProc.style.display = 'block';
+                    customProc.focus();
+                } else {
+                    customProc.style.display = 'none';
+                }
+            }
+
             function toggleAddMonitorModal() {
                 const el = document.getElementById('addMonitorForm');
-                el.style.display = el.style.display === 'none' ? 'block' : 'none';
+                const isOpening = el.style.display === 'none';
+                el.style.display = isOpening ? 'block' : 'none';
+                if (isOpening) {
+                    initAdminDropdowns();
+                }
             }
 
             async function saveNewMonitor() {
-                const prov = document.getElementById('newMonProvince').value.trim();
-                const proc = document.getElementById('newMonProc').value.trim();
-                if (!prov || !proc) return;
+                const provSel = document.getElementById('newMonProvinceSelect');
+                const prov = provSel.value === '__custom__' ? document.getElementById('newMonCustomProv').value.trim() : provSel.value;
+
+                const procSel = document.getElementById('newMonProcSelect');
+                const proc = procSel.value === '__custom__' ? document.getElementById('newMonCustomProc').value.trim() : procSel.value;
+
+                if (!prov || !proc) {
+                    alert('Please select or specify both Province and Procedure');
+                    return;
+                }
                 try {
                     await fetch('/api/monitors', {
                         method: 'POST',
@@ -1989,6 +2364,7 @@ def admin_page():
                 checkDaemonStatus();
             }
 
+            initAdminDropdowns();
             loadOrders();
             setInterval(loadOrders, 5000);
         </script>
