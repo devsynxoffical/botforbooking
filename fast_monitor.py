@@ -129,14 +129,18 @@ except ImportError:
     HAS_HTTP2 = False
 
 
-def check_tor_port() -> bool:
+def check_port(port: int) -> bool:
     try:
         import socket
         with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
             s.settimeout(0.3)
-            return s.connect_ex(('127.0.0.1', 9050)) == 0
+            return s.connect_ex(('127.0.0.1', port)) == 0
     except Exception:
         return False
+
+
+def check_tor_port() -> bool:
+    return check_port(9050) or check_port(9080)
 
 
 def renew_tor_identity() -> bool:
@@ -168,8 +172,12 @@ def resolve_effective_proxy(proxy_arg: Optional[str] = None) -> Optional[str]:
     if p and p.strip():
         return p.strip()
 
-    # 2. If Tor is listening locally on 9050, automatically use it
-    if check_tor_port():
+    # 2. Tor HTTP Tunnel on port 9080 (highest compatibility)
+    if check_port(9080):
+        return "http://127.0.0.1:9080"
+
+    # 3. Tor SOCKS5 on port 9050
+    if check_port(9050):
         return "socks5://127.0.0.1:9050"
 
     return None
@@ -308,10 +316,14 @@ class FastPortalProber:
                     "elapsed_ms": elapsed_ms
                 }
 
-        except httpx.ConnectTimeout:
-            if self.proxy and "9050" in self.proxy:
-                renew_tor_identity()
-            return {"has_slots": False, "status": "timeout", "message": "Connection timeout (Red SARA firewall - rotating Spanish exit circuit)", "elapsed_ms": int((time.time() - t0) * 1000)}
+        except (httpx.ConnectTimeout, httpx.ProxyError):
+            renew_tor_identity()
+            return {
+                "has_slots": False,
+                "status": "timeout",
+                "message": "Conexión rotando circuito español (Red SARA firewall)...",
+                "elapsed_ms": int((time.time() - t0) * 1000)
+            }
         except httpx.HTTPError as e:
             return {"has_slots": False, "status": "error", "message": f"HTTP error: {type(e).__name__}", "elapsed_ms": int((time.time() - t0) * 1000)}
         except Exception as e:
