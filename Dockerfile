@@ -33,10 +33,10 @@ RUN playwright install chromium
 COPY . .
 
 # Setup Tor configuration for Spanish exit nodes ({es}) with local control port
-RUN mkdir -p /etc/tor && \
-    printf 'SOCKSPort 127.0.0.1:9050\nControlPort 127.0.0.1:9051\nExitNodes {es}\nStrictNodes 0\nCookieAuthentication 0\nNewCircuitPeriod 30\nMaxCircuitDirtiness 60\n' > /etc/tor/torrc && \
-    mkdir -p /var/lib/tor /var/log/tor && \
-    chown -R debian-tor:debian-tor /var/lib/tor /var/log/tor /etc/tor 2>/dev/null || true
+RUN mkdir -p /etc/tor /var/lib/tor /var/log/tor && \
+    printf 'SOCKSPort 127.0.0.1:9050\nControlPort 127.0.0.1:9051\nExitNodes {es}\nStrictNodes 0\nCookieAuthentication 0\nDataDirectory /var/lib/tor\nUser debian-tor\nNewCircuitPeriod 30\nMaxCircuitDirtiness 60\n' > /etc/tor/torrc && \
+    chown -R debian-tor:debian-tor /var/lib/tor /var/log/tor /etc/tor 2>/dev/null || true && \
+    chmod 700 /var/lib/tor 2>/dev/null || true
 
 EXPOSE 8000
 
