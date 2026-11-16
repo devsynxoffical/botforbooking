@@ -399,6 +399,15 @@ def purge_completed_records():
     return {"status": "success", "message": f"Successfully scrubbed {scrubbed_count} completed records."}
 
 
+@app.delete("/api/orders/{order_id}")
+def delete_order(order_id: str):
+    with get_db() as conn:
+        cur = conn.cursor()
+        cur.execute("DELETE FROM orders WHERE UPPER(order_id) = UPPER(?)", (order_id.strip(),))
+        conn.commit()
+    return {"status": "success", "message": f"Order {order_id} deleted"}
+
+
 @app.post("/api/orders/{order_id}/launch-assistant")
 def launch_assistant(order_id: str):
     with get_db() as conn:
