@@ -84,10 +84,7 @@ def get_python_bin() -> str:
     return sys.executable
 
 
-def get_db():
-    conn = sqlite3.connect(DB_PATH)
-    conn.row_factory = sqlite3.Row
-    return conn
+from db import get_db
 
 
 def get_active_monitors() -> List[dict]:
