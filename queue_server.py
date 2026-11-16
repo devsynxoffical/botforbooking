@@ -652,6 +652,17 @@ def get_tor_status():
     return check_tor_service()
 
 
+@app.get("/api/tor/logs")
+def get_tor_logs():
+    log_file = Path("/tmp/tor.log")
+    if log_file.exists():
+        try:
+            return {"logs": log_file.read_text(encoding="utf-8", errors="ignore")[-3000:]}
+        except Exception as e:
+            return {"logs": f"Error reading logs: {e}"}
+    return {"logs": "No Tor log file found at /tmp/tor.log"}
+
+
 @app.post("/api/tor/renew-circuit")
 def api_renew_tor_circuit():
     return renew_tor_circuit()

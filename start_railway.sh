@@ -1,24 +1,20 @@
-#!/usr/bin/env bash
+#!/bin/sh
 
 PORT="${PORT:-8000}"
 
 echo "=================================================================="
 echo " 🚂 Starting Cita Previa Monitor on Railway"
 echo "  - Port: $PORT"
-echo "  - Python: $(python --version 2>&1)"
+echo "  - Python: $(python3 --version 2>&1 || python --version 2>&1)"
 echo "=================================================================="
 
-# Ensure Tor directories exist and have proper permissions
-mkdir -p /var/lib/tor /var/log/tor /etc/tor
-chown -R debian-tor:debian-tor /var/lib/tor /var/log/tor /etc/tor 2>/dev/null || true
-chmod 700 /var/lib/tor 2>/dev/null || true
-
-# 1. Start Tor in background
+# 1. Start Tor in background (isolated in /tmp/tor_data, no setuid permissions needed)
 if command -v tor >/dev/null 2>&1; then
     echo "🧅 Starting Built-in Tor Daemon (Spain Exit Nodes)..."
-    tor --runasdaemon 1 --DataDirectory /var/lib/tor -f /etc/tor/torrc 2>/dev/null || \
-    (tor -f /etc/tor/torrc >/dev/null 2>&1 &) || true
-    sleep 2
+    mkdir -p /tmp/tor_data
+    chmod 700 /tmp/tor_data
+    tor --SOCKSPort 127.0.0.1:9050 --ControlPort 127.0.0.1:9051 --ExitNodes "{es}" --StrictNodes 0 --CookieAuthentication 0 --DataDirectory /tmp/tor_data >/tmp/tor.log 2>&1 &
+    sleep 3
 else
     echo "⚠️ Tor executable not found, skipping Tor launch."
 fi
