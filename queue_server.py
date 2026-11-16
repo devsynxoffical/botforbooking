@@ -587,10 +587,79 @@ def trigger_test_broadcast():
 # ==========================================
 # API Routes: Proxy Settings & Connection Diagnostics
 # ==========================================
+def check_tor_service() -> Dict[str, Any]:
+    import socket
+    socks_open = False
+    ctrl_open = False
+    try:
+        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+            s.settimeout(0.3)
+            socks_open = (s.connect_ex(('127.0.0.1', 9050)) == 0)
+    except Exception:
+        pass
+
+    try:
+        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+            s.settimeout(0.3)
+            ctrl_open = (s.connect_ex(('127.0.0.1', 9051)) == 0)
+    except Exception:
+        pass
+
+    return {
+        "is_active": socks_open,
+        "socks_port": 9050,
+        "control_port": 9051 if ctrl_open else None,
+        "proxy_url": "socks5://127.0.0.1:9050" if socks_open else None
+    }
+
+
+def renew_tor_circuit() -> Dict[str, Any]:
+    import socket
+    try:
+        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+            s.settimeout(2.0)
+            s.connect(('127.0.0.1', 9051))
+            s.sendall(b'AUTHENTICATE ""\r\n')
+            resp = s.recv(1024).decode('utf-8', errors='ignore')
+            if "250" not in resp:
+                return {"success": False, "message": f"Tor authentication rejected: {resp.strip()}"}
+            s.sendall(b'SIGNAL NEWNYM\r\n')
+            resp2 = s.recv(1024).decode('utf-8', errors='ignore')
+            s.sendall(b'QUIT\r\n')
+            if "250" in resp2:
+                return {"success": True, "message": "Tor identity renewed: fresh Spanish circuit requested."}
+            else:
+                return {"success": False, "message": f"Tor signal rejected: {resp2.strip()}"}
+    except Exception as e:
+        return {"success": False, "message": f"Tor control port unreachable: {str(e)}"}
+
+
+def get_effective_proxy() -> Optional[str]:
+    config = load_config()
+    p = config.get("proxy") or os.environ.get("PROXY_URL") or os.environ.get("HTTPS_PROXY") or os.environ.get("HTTP_PROXY")
+    if p and p.strip():
+        return p.strip()
+
+    tor_info = check_tor_service()
+    if tor_info["is_active"]:
+        return "socks5://127.0.0.1:9050"
+
+    return None
+
+
+@app.get("/api/tor/status")
+def get_tor_status():
+    return check_tor_service()
+
+
+@app.post("/api/tor/renew-circuit")
+def api_renew_tor_circuit():
+    return renew_tor_circuit()
+
+
 @app.get("/api/config/proxy")
 def get_proxy_config():
-    config = load_config()
-    current_proxy = config.get("proxy") or os.environ.get("PROXY_URL") or os.environ.get("HTTPS_PROXY") or ""
+    current_proxy = get_effective_proxy() or ""
     masked_proxy = ""
     if current_proxy:
         if "@" in current_proxy:
@@ -607,7 +676,8 @@ def get_proxy_config():
     return {
         "proxy": current_proxy,
         "masked_proxy": masked_proxy,
-        "is_configured": bool(current_proxy)
+        "is_configured": bool(current_proxy),
+        "tor": check_tor_service()
     }
 
 
@@ -620,17 +690,28 @@ def update_proxy_config(settings: ProxySettingsUpdate):
     if proxy_val:
         os.environ["PROXY_URL"] = proxy_val
         os.environ["HTTPS_PROXY"] = proxy_val
+        os.environ["HTTP_PROXY"] = proxy_val
     else:
         os.environ.pop("PROXY_URL", None)
         os.environ.pop("HTTPS_PROXY", None)
+        os.environ.pop("HTTP_PROXY", None)
     return {"status": "success", "message": "Proxy configuration updated.", "proxy": proxy_val}
 
 
 @app.post("/api/diagnostics/test-connection")
 async def test_portal_connection():
-    config = load_config()
-    proxy = config.get("proxy") or os.environ.get("PROXY_URL") or os.environ.get("HTTPS_PROXY") or None
+    proxy = get_effective_proxy()
     portal_url = "https://icp.administracionelectronica.gob.es/icpplus/index.html"
+
+    # Query outbound IP and geographic country through the active proxy
+    ip_info = {}
+    try:
+        async with httpx.AsyncClient(timeout=httpx.Timeout(4.5, connect=3.0), proxy=proxy) as ip_client:
+            ip_resp = await ip_client.get("http://ip-api.com/json/?fields=query,country,countryCode,city,isp")
+            if ip_resp.status_code == 200:
+                ip_info = ip_resp.json()
+    except Exception:
+        pass
 
     t0 = datetime.datetime.now()
     try:
@@ -640,7 +721,7 @@ async def test_portal_connection():
                 "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
                 "Accept-Language": "es-ES,es;q=0.9,en;q=0.8"
             },
-            timeout=httpx.Timeout(8.0, connect=6.0),
+            timeout=httpx.Timeout(10.0, connect=6.0),
             follow_redirects=True,
             proxy=proxy
         ) as client:
@@ -650,8 +731,9 @@ async def test_portal_connection():
                 "success": resp.status_code == 200,
                 "status_code": resp.status_code,
                 "latency_ms": elapsed_ms,
-                "proxy_used": bool(proxy),
-                "message": f"Successfully connected to Spanish Government Portal (HTTP {resp.status_code}) in {elapsed_ms}ms"
+                "proxy_used": proxy,
+                "ip_info": ip_info,
+                "message": f"Connected to Spanish Government Portal (HTTP {resp.status_code}) in {elapsed_ms}ms"
             }
     except httpx.ConnectTimeout:
         elapsed_ms = int((datetime.datetime.now() - t0).total_seconds() * 1000)
@@ -659,8 +741,9 @@ async def test_portal_connection():
             "success": False,
             "status_code": 408,
             "latency_ms": elapsed_ms,
-            "proxy_used": bool(proxy),
-            "message": "Connection Timeout: The Spanish Government Red SARA firewall blocked this connection attempt. Cloud datacenter IPs are blocked. A Spanish residential/ISP proxy is required."
+            "proxy_used": proxy,
+            "ip_info": ip_info,
+            "message": "Connection Timeout: Red SARA firewall blocked this connection attempt. Rotate circuit or configure an alternate Spanish proxy."
         }
     except Exception as e:
         elapsed_ms = int((datetime.datetime.now() - t0).total_seconds() * 1000)
@@ -668,7 +751,8 @@ async def test_portal_connection():
             "success": False,
             "status_code": 500,
             "latency_ms": elapsed_ms,
-            "proxy_used": bool(proxy),
+            "proxy_used": proxy,
+            "ip_info": ip_info,
             "message": f"Connection error: {type(e).__name__} ({str(e)})"
         }
 
@@ -1791,31 +1875,40 @@ def admin_page():
                 <div class="card-header-flex">
                     <div>
                         <h3 style="margin: 0; display: flex; align-items: center; gap: 0.4rem; font-size: 1.05rem;">
-                            🛡️ Spanish Portal & Proxy Settings
+                            🛡️ Spanish Portal, IP & Proxy Routing
                         </h3>
                         <p style="color: #64748b; font-size: 0.82rem; margin: 0.25rem 0 0; line-height: 1.35;">
-                            Direct cloud datacenters are dropped by Spain's Red SARA firewall. A Spanish proxy allows 24/7 instant slot detection.
+                            Foreign cloud IPs are blocked by Spain's Red SARA. Use built-in Tor (Spain Exit Node {es}) or custom residential proxy.
                         </p>
                     </div>
-                    <div id="portalConnectionStatusBadge">
-                        <span class="badge badge-timeout" style="padding: 0.35rem 0.65rem; font-size: 0.75rem;">⚠️ Check Connection</span>
+                    <div style="display: flex; gap: 0.35rem; align-items: center; flex-wrap: wrap;">
+                        <span id="torStatusBadge" class="badge" style="background: #ede9fe; color: #6d28d9; padding: 0.35rem 0.65rem; font-size: 0.75rem;">🧅 Tor Checking...</span>
+                        <div id="portalConnectionStatusBadge">
+                            <span class="badge badge-timeout" style="padding: 0.35rem 0.65rem; font-size: 0.75rem;">⚠️ Check Connection</span>
+                        </div>
                     </div>
                 </div>
 
                 <div id="proxyAlertBox" class="alert-box"></div>
 
                 <div style="margin-top: 0.75rem;">
-                    <label>Spanish Proxy URL (HTTP/HTTPS/SOCKS5)</label>
-                    <input type="text" id="proxyUrlInput" placeholder="e.g. http://username:password@es-proxy:12323">
-                    <small style="color: #64748b; display: block; margin-top: 0.25rem;" id="proxyStatusNotice">Format: http://user:pass@host:port or socks5://host:port</small>
+                    <label>Active Proxy URL (SOCKS5 / HTTP / HTTPS)</label>
+                    <input type="text" id="proxyUrlInput" placeholder="socks5://127.0.0.1:9050 or http://user:pass@host:port">
+                    <small style="color: #64748b; display: block; margin-top: 0.25rem;" id="proxyStatusNotice">
+                        Built-in Tor default: <code>socks5://127.0.0.1:9050</code> (Exit: Spain {es}). Or input custom residential proxy.
+                    </small>
                 </div>
 
-                <div class="proxy-btn-row">
+                <div style="display: flex; gap: 0.4rem; margin-top: 0.75rem; flex-wrap: wrap;">
+                    <button class="btn btn-action" style="background: #7c3aed;" onclick="setBuiltinTorProxy()">🧅 Use Built-in Tor</button>
+                    <button class="btn btn-action" style="background: #475569;" onclick="renewTorCircuitNow()">🔄 Renew Tor Spanish IP</button>
                     <button class="btn" onclick="saveProxySettings()">💾 Save Proxy</button>
-                    <button class="btn btn-action" style="background: #0284c7;" onclick="testPortalConnectionNow()">⚡ Test Connection</button>
-                    <button class="btn btn-action" style="background: #8b5cf6;" onclick="autoFindFreeProxy()">🔍 Auto-Find Proxy</button>
+                    <button class="btn btn-action" style="background: #0284c7;" onclick="testPortalConnectionNow()">⚡ Test Connection & IP</button>
+                    <button class="btn btn-action" style="background: #d97706;" onclick="autoFindFreeProxy()">🔍 Auto-Find Proxy</button>
                 </div>
-                <small style="color: #64748b; margin-top: 0.5rem; display: block;" id="diagnosticResultText">Click 'Test Connection' or 'Auto-Find Proxy' to test live reachability.</small>
+                <div style="margin-top: 0.6rem; padding: 0.65rem 0.85rem; background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; font-size: 0.82rem; line-height: 1.45;" id="diagnosticResultBox">
+                    <span id="diagnosticResultText">Click <b>⚡ Test Connection & IP</b> to verify reachability and inspect outbound Spanish location.</span>
+                </div>
             </div>
 
             <!-- Telegram Config Card -->
@@ -2070,7 +2163,7 @@ def admin_page():
                 }
             }
 
-            // --- PROXY SETTINGS & DIAGNOSTICS ---
+            // --- PROXY & IP ROUTING SETTINGS ---
             async function loadProxySettings() {
                 try {
                     const res = await fetch('/api/config/proxy');
@@ -2078,15 +2171,56 @@ def admin_page():
                     document.getElementById('proxyUrlInput').value = data.proxy || '';
                     const notice = document.getElementById('proxyStatusNotice');
                     const badge = document.getElementById('portalConnectionStatusBadge');
-                    if (data.is_configured) {
-                        notice.innerText = `Active Proxy: ${data.masked_proxy}`;
-                        badge.innerHTML = '<span class="badge badge-searching" style="padding: 0.4rem 0.8rem;">🛡️ Proxy Configured</span>';
+                    const torBadge = document.getElementById('torStatusBadge');
+
+                    if (data.tor && data.tor.is_active) {
+                        if (torBadge) {
+                            torBadge.innerHTML = '🧅 Tor Active (127.0.0.1:9050 • Spain {es})';
+                            torBadge.style.background = '#dcfce7';
+                            torBadge.style.color = '#15803d';
+                        }
                     } else {
-                        notice.innerText = 'No proxy configured. Direct cloud requests to Red SARA are blocked.';
-                        badge.innerHTML = '<span class="badge badge-timeout" style="padding: 0.4rem 0.8rem;">⚠️ Direct IP (Firewalled)</span>';
+                        if (torBadge) {
+                            torBadge.innerHTML = '🧅 Tor Standby';
+                            torBadge.style.background = '#fef3c7';
+                            torBadge.style.color = '#92400e';
+                        }
+                    }
+
+                    if (data.is_configured) {
+                        notice.innerText = `Active Routing: ${data.masked_proxy}`;
+                        badge.innerHTML = '<span class="badge badge-searching" style="padding: 0.4rem 0.8rem;">🛡️ Proxy Active</span>';
+                    } else if (data.tor && data.tor.is_active) {
+                        notice.innerText = 'Active Routing: Built-in Tor SOCKS5 (Spain Exit Node {es})';
+                        badge.innerHTML = '<span class="badge badge-searching" style="padding: 0.4rem 0.8rem;">🧅 Tor Active</span>';
+                    } else {
+                        notice.innerText = 'No proxy configured. Foreign cloud requests are dropped by Red SARA.';
+                        badge.innerHTML = '<span class="badge badge-timeout" style="padding: 0.4rem 0.8rem;">⚠️ Direct IP</span>';
                     }
                 } catch(e) {
                     console.error("Failed to load proxy settings", e);
+                }
+            }
+
+            function setBuiltinTorProxy() {
+                document.getElementById('proxyUrlInput').value = 'socks5://127.0.0.1:9050';
+                saveProxySettings();
+            }
+
+            async function renewTorCircuitNow() {
+                const resultText = document.getElementById('diagnosticResultText');
+                resultText.innerHTML = '🔄 Requesting new Spanish exit circuit from Tor daemon...';
+                try {
+                    const res = await fetch('/api/tor/renew-circuit', { method: 'POST' });
+                    const data = await res.json();
+                    if (data.success) {
+                        resultText.innerHTML = `🟢 <b>${data.message}</b> Testing reachability with fresh IP...`;
+                        setTimeout(testPortalConnectionNow, 1200);
+                    } else {
+                        resultText.innerHTML = `⚠️ <b>Tor renew notice:</b> ${data.message}`;
+                    }
+                } catch(e) {
+                    resultText.innerHTML = '❌ Failed to renew Tor circuit: ' + e.message;
                 }
             }
 
@@ -2113,15 +2247,23 @@ def admin_page():
             async function testPortalConnectionNow() {
                 const resultText = document.getElementById('diagnosticResultText');
                 const badge = document.getElementById('portalConnectionStatusBadge');
-                resultText.innerHTML = '⏳ Probing <code>icp.administracionelectronica.gob.es</code> (up to 6s)...';
+                resultText.innerHTML = '⏳ Probing <code>icp.administracionelectronica.gob.es</code> and verifying outbound IP...';
                 try {
                     const res = await fetch('/api/diagnostics/test-connection', { method: 'POST' });
                     const data = await res.json();
+                    let ipDetails = '';
+                    if (data.ip_info && data.ip_info.query) {
+                        const country = data.ip_info.country || 'Unknown';
+                        const city = data.ip_info.city || '';
+                        const isp = data.ip_info.isp || '';
+                        const flag = (data.ip_info.countryCode === 'ES') ? '🇪🇸' : '🌐';
+                        ipDetails = `<br><span style="color: #334155; font-size: 0.82rem;">${flag} <b>Outbound IP:</b> <code>${data.ip_info.query}</code> (${country}${city ? ', ' + city : ''}${isp ? ' - ' + isp : ''})</span>`;
+                    }
                     if (data.success) {
-                        resultText.innerHTML = `🟢 <strong>Connected!</strong> Portal responded with HTTP ${data.status_code} in <b>${data.latency_ms}ms</b> ${data.proxy_used ? '(via Spanish proxy)' : ''}. Live slots can now be fetched!`;
+                        resultText.innerHTML = `🟢 <strong>Connected!</strong> Portal responded with HTTP ${data.status_code} in <b>${data.latency_ms}ms</b> ${data.proxy_used ? '(via ' + data.proxy_used + ')' : ''}.${ipDetails}<br><span style="color: #15803d; font-weight: bold;">✅ Spanish Government Portal is reachable! Live monitoring and bookings can proceed.</span>`;
                         badge.innerHTML = `<span class="badge badge-available" style="padding: 0.4rem 0.8rem;">🟢 CONNECTED (${data.latency_ms}ms)</span>`;
                     } else {
-                        resultText.innerHTML = `🔴 <strong>Firewalled:</strong> ${data.message}`;
+                        resultText.innerHTML = `🔴 <strong>Firewalled / Unreachable:</strong> ${data.message}${ipDetails}<br><span style="color: #b91c1c;">Tip: Click <b>🔄 Renew Tor Spanish IP</b> or input a custom Spanish proxy.</span>`;
                         badge.innerHTML = '<span class="badge badge-timeout" style="padding: 0.4rem 0.8rem;">🔴 FIREWALLED / BLOCKED</span>';
                     }
                 } catch(e) {
@@ -2142,7 +2284,7 @@ def admin_page():
                         badge.innerHTML = '<span class="badge badge-available" style="padding: 0.4rem 0.8rem;">🟢 PROXY CONNECTED</span>';
                         loadProxySettings();
                     } else {
-                        resultText.innerHTML = `⚠️ <strong>No open proxies worked:</strong> ${data.message}`;
+                        resultText.innerHTML = `⚠️ <strong>Notice:</strong> ${data.message}`;
                         badge.innerHTML = '<span class="badge badge-timeout" style="padding: 0.4rem 0.8rem;">🔴 RED SARA BLOCKED</span>';
                     }
                 } catch(e) {

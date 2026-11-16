@@ -127,16 +127,57 @@ except ImportError:
     HAS_HTTP2 = False
 
 
+def check_tor_port() -> bool:
+    try:
+        import socket
+        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+            s.settimeout(0.3)
+            return s.connect_ex(('127.0.0.1', 9050)) == 0
+    except Exception:
+        return False
+
+
+def renew_tor_identity() -> bool:
+    try:
+        import socket
+        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+            s.settimeout(1.5)
+            s.connect(('127.0.0.1', 9051))
+            s.sendall(b'AUTHENTICATE ""\r\n')
+            resp = s.recv(1024).decode('utf-8', errors='ignore')
+            if "250" not in resp:
+                return False
+            s.sendall(b'SIGNAL NEWNYM\r\n')
+            resp2 = s.recv(1024).decode('utf-8', errors='ignore')
+            s.sendall(b'QUIT\r\n')
+            return "250" in resp2
+    except Exception:
+        return False
+
+
+def resolve_effective_proxy(proxy_arg: Optional[str] = None) -> Optional[str]:
+    # 1. User configured proxy or env var
+    p = (
+        proxy_arg
+        or os.environ.get("PROXY_URL")
+        or os.environ.get("HTTPS_PROXY")
+        or os.environ.get("HTTP_PROXY")
+    )
+    if p and p.strip():
+        return p.strip()
+
+    # 2. If Tor is listening locally on 9050, automatically use it
+    if check_tor_port():
+        return "socks5://127.0.0.1:9050"
+
+    return None
+
+
 class FastPortalProber:
     """Ultra-fast HTTP/2 connection-pooled scanner for Cita Previa."""
 
     def __init__(self, proxy: Optional[str] = None):
-        self.proxy = (
-            proxy
-            or os.environ.get("PROXY_URL")
-            or os.environ.get("HTTPS_PROXY")
-            or os.environ.get("HTTP_PROXY")
-        )
+        self.proxy = resolve_effective_proxy(proxy)
         self.client: Optional[httpx.AsyncClient] = None
 
     async def get_client(self) -> httpx.AsyncClient:
@@ -266,7 +307,9 @@ class FastPortalProber:
                 }
 
         except httpx.ConnectTimeout:
-            return {"has_slots": False, "status": "timeout", "message": "Connection timeout (Red SARA firewall - Spanish proxy required)", "elapsed_ms": int((time.time() - t0) * 1000)}
+            if self.proxy and "9050" in self.proxy:
+                renew_tor_identity()
+            return {"has_slots": False, "status": "timeout", "message": "Connection timeout (Red SARA firewall - rotating Spanish exit circuit)", "elapsed_ms": int((time.time() - t0) * 1000)}
         except httpx.HTTPError as e:
             return {"has_slots": False, "status": "error", "message": f"HTTP error: {type(e).__name__}", "elapsed_ms": int((time.time() - t0) * 1000)}
         except Exception as e:

@@ -136,6 +136,16 @@ def run_auto_booking(order_id: str, headless: bool = False) -> Dict[str, Any]:
         or os.environ.get("HTTPS_PROXY")
         or os.environ.get("HTTP_PROXY")
     )
+    if not proxy_str:
+        try:
+            import socket
+            with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+                s.settimeout(0.3)
+                if s.connect_ex(('127.0.0.1', 9050)) == 0:
+                    proxy_str = "socks5://127.0.0.1:9050"
+        except Exception:
+            pass
+
     proxy_config = {"server": proxy_str} if proxy_str else None
 
     with sync_playwright() as p:
