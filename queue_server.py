@@ -616,11 +616,16 @@ async def api_send_direct_telegram(payload: Dict[str, Any]):
     target_chat = str(payload.get("chat_id", "")).strip()
     config = load_config()
     tg = config.get("telegram", {})
-    bot_token = tg.get("bot_token", "").strip() or "6142133668:AAEQluoCjQTH7ROqK3s9sIKaKsOC9r5rkJM"
+    bot_token = payload.get("bot_token") or tg.get("bot_token", "").strip() or "6142133668:AAEQluoCjQTH7ROqK3s9sIKaKsOC9r5rkJM"
+    custom_msg = payload.get("message")
     if not target_chat:
         return {"status": "error", "message": "chat_id required"}
 
-    res = send_test_broadcast(bot_token, target_chat)
+    if custom_msg:
+        res = broadcast_telegram_message(bot_token, target_chat, custom_msg)
+    else:
+        res = send_test_broadcast(bot_token, target_chat)
+
     if res.get("status") == "success":
         tg["chat_id"] = target_chat
         tg["enabled"] = True
