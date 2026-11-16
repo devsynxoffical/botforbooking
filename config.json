@@ -12,7 +12,7 @@
   "telegram": {
     "enabled": true,
     "bot_token": "6142133668:AAEQluoCjQTH7ROqK3s9sIKaKsOC9r5rkJM",
-    "chat_id": "1537542511"
+    "chat_id": "1537542511, 5973864946"
   },
   "data_retention": {
     "auto_delete_completed": true,
