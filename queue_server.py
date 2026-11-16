@@ -9,6 +9,7 @@ Appointment Queue & Live Monitor Server
 - Operator Launch Bridge to Assisted Browser Runner
 """
 
+from __future__ import annotations
 import sqlite3
 import random
 import datetime
@@ -18,12 +19,16 @@ import sys
 import os
 import signal
 import asyncio
+import logging
 from pathlib import Path
-from typing import Optional, List
+from typing import Optional, List, Dict, Any, Union, Tuple
 import httpx
 from fastapi import FastAPI, HTTPException, Request, BackgroundTasks
 from fastapi.responses import HTMLResponse, JSONResponse
 from pydantic import BaseModel
+
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger("queue_server")
 
 from telegram_broadcaster import (
     broadcast_telegram_message,
@@ -38,6 +43,10 @@ CONFIG_PATH = BASE_DIR / "config.json"
 DEFAULT_FALLBACK_PHONE = "+34 600 000 000"
 
 app = FastAPI(title="Appointment Order Queue & Live Monitor System")
+
+@app.get("/health")
+def healthcheck():
+    return {"status": "ok", "service": "cita-previa-system"}
 
 # Global reference to live monitor subprocess if started via dashboard
 MONITOR_PROCESS: Optional[subprocess.Popen] = None

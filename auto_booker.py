@@ -231,16 +231,31 @@ def run_auto_booking(order_id: str, headless: bool = False) -> Dict[str, Any]:
             if name_input.is_visible():
                 name_input.fill(order["name"])
 
-            year_input = page.locator('input#txtAnnoCitado').first
-            if year_input.is_visible():
-                year_input.fill("1990")
+            # Fill Year / Date of Birth if requested by the procedure form
+            birth_val = str(order.get("birth_date") or "").strip()
+            birth_year = ""
+            if birth_val:
+                year_match = re.search(r'\b(19\d{2}|20\d{2})\b', birth_val)
+                if year_match:
+                    birth_year = year_match.group(1)
 
-            country_sel = page.locator('select#txtPaisNac').first
-            if country_sel.is_visible() and order.get("citizenship"):
-                for opt in country_sel.locator("option").all():
-                    if order["citizenship"].upper() in opt.inner_text().upper():
-                        country_sel.select_option(value=opt.get_attribute("value"))
-                        break
+            year_input = page.locator('input#txtAnnoCitado, input[name="txtAnnoCitado"]').first
+            if year_input.is_visible():
+                year_input.fill(birth_year or "1990")
+
+            dob_input = page.locator('input#txtFechaNac, input[name="txtFechaNac"]').first
+            if dob_input.is_visible() and birth_val:
+                dob_input.fill(birth_val)
+
+            country_sel = page.locator('select#txtPaisNac, select[name="txtPaisNac"]').first
+            if country_sel.is_visible():
+                country_target = (order.get("birth_country") or order.get("citizenship") or "").strip().upper()
+                if country_target:
+                    for opt in country_sel.locator("option").all():
+                        opt_text = opt.inner_text().strip().upper()
+                        if country_target in opt_text or opt_text in country_target:
+                            country_sel.select_option(value=opt.get_attribute("value"))
+                            break
 
             # Check for CAPTCHA
             captcha_img = page.locator('img[src*="captcha"], img#captcha').first

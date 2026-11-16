@@ -5,6 +5,7 @@ High-performance asynchronous monitor using HTTP/2 session pooling and lightweig
 Detects open appointment slots in milliseconds and broadcasts instantly via Telegram.
 """
 
+from __future__ import annotations
 import sys
 import os
 import time
@@ -13,8 +14,9 @@ import sqlite3
 import argparse
 import asyncio
 import datetime
+import subprocess
 from pathlib import Path
-from typing import Optional, Dict, Any, List, Tuple
+from typing import Optional, Dict, Any, List, Tuple, Union
 import re
 
 import httpx
