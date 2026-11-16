@@ -537,6 +537,58 @@ def trigger_test_broadcast():
     return res
 
 
+@app.get("/api/telegram/detect-chat")
+async def detect_telegram_chat():
+    config = load_config()
+    tg = config.get("telegram", {})
+    bot_token = tg.get("bot_token", "").strip() or "6142133668:AAEQluoCjQTH7ROqK3s9sIKaKsOC9r5rkJM"
+    if not bot_token:
+        return {"status": "error", "message": "Bot token missing"}
+
+    url = f"https://api.telegram.org/bot{bot_token}/getUpdates"
+    try:
+        async with httpx.AsyncClient(timeout=10.0) as client:
+            resp = await client.get(url)
+            data = resp.json()
+            if not data.get("ok"):
+                return {"status": "error", "telegram_response": data}
+
+            updates = data.get("result", [])
+            chats_found = []
+            for u in updates:
+                msg = u.get("message") or u.get("channel_post") or u.get("my_chat_member")
+                if msg and "chat" in msg:
+                    c = msg["chat"]
+                    chats_found.append({
+                        "id": c.get("id"),
+                        "type": c.get("type"),
+                        "title": c.get("title"),
+                        "username": c.get("username"),
+                        "first_name": c.get("first_name")
+                    })
+            return {"status": "success", "total_updates": len(updates), "chats": chats_found}
+    except Exception as e:
+        return {"status": "error", "message": str(e)}
+
+
+@app.post("/api/telegram/send-direct")
+async def api_send_direct_telegram(payload: Dict[str, Any]):
+    target_chat = str(payload.get("chat_id", "")).strip()
+    config = load_config()
+    tg = config.get("telegram", {})
+    bot_token = tg.get("bot_token", "").strip() or "6142133668:AAEQluoCjQTH7ROqK3s9sIKaKsOC9r5rkJM"
+    if not target_chat:
+        return {"status": "error", "message": "chat_id required"}
+
+    res = send_test_broadcast(bot_token, target_chat)
+    if res.get("status") == "success":
+        tg["chat_id"] = target_chat
+        tg["enabled"] = True
+        config["telegram"] = tg
+        save_config(config)
+    return res
+
+
 # ==========================================
 # API Routes: Proxy Settings & Connection Diagnostics
 # ==========================================
