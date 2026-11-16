@@ -89,10 +89,13 @@ def get_db():
 
 
 def get_active_monitors() -> List[dict]:
-    with get_db() as conn:
-        cur = conn.cursor()
-        cur.execute("SELECT * FROM monitors WHERE is_active = 1 ORDER BY id ASC")
-        return [dict(r) for r in cur.fetchall()]
+    try:
+        with get_db() as conn:
+            cur = conn.cursor()
+            cur.execute("SELECT * FROM monitors WHERE is_active = 1 ORDER BY id ASC")
+            return [dict(r) for r in cur.fetchall()]
+    except (sqlite3.OperationalError, Exception):
+        return []
 
 
 def update_monitor_status(monitor_id: int, status: str, message: str, alerted: bool = False):

@@ -3,35 +3,39 @@
 PORT="${PORT:-8000}"
 
 echo "=================================================================="
-echo " 🚂 Starting Cita Previa Monitor on Railway"
+echo " 🚂 Starting Cita Previa Booking & Monitor System on Railway"
 echo "  - Port: $PORT"
-echo "  - Python: $(python3 --version 2>&1 || python --version 2>&1)"
 echo "=================================================================="
 
-# 1. Start Tor in background (isolated in /tmp/tor_data, no setuid permissions needed)
+# Ensure permissions on /tmp/tor_data if running as debian-tor or root
+mkdir -p /tmp/tor_data 2>/dev/null
+chmod 700 /tmp/tor_data 2>/dev/null
+
+# Launch Tor in background using debian-tor if available
 if command -v tor >/dev/null 2>&1; then
     echo "🧅 Starting Built-in Tor Daemon (Spain Exit Nodes)..."
-    mkdir -p /tmp/tor_data
-    chmod 700 /tmp/tor_data
-    tor --SOCKSPort 127.0.0.1:9050 --ControlPort 127.0.0.1:9051 --ExitNodes "{es}" --StrictNodes 0 --CookieAuthentication 0 --DataDirectory /tmp/tor_data >/tmp/tor.log 2>&1 &
-    sleep 3
+    if id debian-tor >/dev/null 2>&1; then
+        chown -R debian-tor:debian-tor /tmp/tor_data 2>/dev/null
+        chmod 700 /tmp/tor_data 2>/dev/null
+        su -s /bin/sh debian-tor -c 'tor --SOCKSPort 127.0.0.1:9050 --ControlPort 127.0.0.1:9051 --ExitNodes "{es}" --StrictNodes 0 --CookieAuthentication 0 --DataDirectory /tmp/tor_data' >/tmp/tor.log 2>&1 &
+    else
+        tor --SOCKSPort 127.0.0.1:9050 --ControlPort 127.0.0.1:9051 --ExitNodes "{es}" --StrictNodes 0 --CookieAuthentication 0 --DataDirectory /tmp/tor_data >/tmp/tor.log 2>&1 &
+    fi
 else
     echo "⚠️ Tor executable not found, skipping Tor launch."
 fi
 
-# 2. Set default proxy to Tor if not overridden
-if [ -z "$PROXY_URL" ] && [ -z "$HTTPS_PROXY" ]; then
-    echo "⚡ Activating built-in Tor SOCKS5 proxy: socks5://127.0.0.1:9050"
-    export PROXY_URL="socks5://127.0.0.1:9050"
-    export HTTPS_PROXY="socks5://127.0.0.1:9050"
-    export HTTP_PROXY="socks5://127.0.0.1:9050"
-fi
+# Set default proxy environment variables to local Tor SOCKS5
+export PROXY_URL="${PROXY_URL:-socks5://127.0.0.1:9050}"
+export HTTPS_PROXY="${HTTPS_PROXY:-socks5://127.0.0.1:9050}"
+export HTTP_PROXY="${HTTP_PROXY:-socks5://127.0.0.1:9050}"
 
-# 3. Start live ultra-fast monitor in the background
+# Start live ultra-fast monitor in background
 echo "⚡ Launching Live Monitor Daemon..."
-python fast_monitor.py --interval 3.0 &
+python3 fast_monitor.py --interval 3.0 >/tmp/fast_monitor.log 2>&1 &
 
-# 4. Start Web Queue & Admin API in foreground
-echo "🌐 Launching Queue & Admin Dashboard on port $PORT..."
-exec uvicorn queue_server:app --host 0.0.0.0 --port "$PORT"
+# Start Web Queue & Admin API in foreground so Railway binds immediately
+echo "🌐 Launching Application Web Server on port $PORT..."
+exec python3 -m uvicorn queue_server:app --host 0.0.0.0 --port "$PORT"
+
 

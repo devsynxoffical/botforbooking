@@ -663,6 +663,17 @@ def get_tor_logs():
     return {"logs": "No Tor log file found at /tmp/tor.log"}
 
 
+@app.get("/api/monitor-daemon/logs")
+def get_monitor_daemon_logs():
+    log_file = Path("/tmp/fast_monitor.log")
+    if log_file.exists():
+        try:
+            return {"logs": log_file.read_text(encoding="utf-8", errors="ignore")[-3000:]}
+        except Exception as e:
+            return {"logs": f"Error reading logs: {e}"}
+    return {"logs": "No monitor log file found at /tmp/fast_monitor.log"}
+
+
 @app.post("/api/tor/renew-circuit")
 def api_renew_tor_circuit():
     return renew_tor_circuit()

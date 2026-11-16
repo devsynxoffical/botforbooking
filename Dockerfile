@@ -34,8 +34,9 @@ COPY . .
 
 # Setup Tor configuration for Spanish exit nodes ({es}) with local control port
 RUN mkdir -p /etc/tor /tmp/tor_data && \
-    printf 'SOCKSPort 127.0.0.1:9050\nControlPort 127.0.0.1:9051\nExitNodes {es}\nStrictNodes 0\nCookieAuthentication 0\nDataDirectory /tmp/tor_data\nNewCircuitPeriod 30\nMaxCircuitDirtiness 60\n' > /etc/tor/torrc && \
-    chmod 700 /tmp/tor_data
+    (id debian-tor && chown -R debian-tor:debian-tor /tmp/tor_data || true) && \
+    chmod 700 /tmp/tor_data && \
+    printf 'SOCKSPort 127.0.0.1:9050\nControlPort 127.0.0.1:9051\nExitNodes {es}\nStrictNodes 0\nCookieAuthentication 0\nDataDirectory /tmp/tor_data\nNewCircuitPeriod 30\nMaxCircuitDirtiness 60\n' > /etc/tor/torrc
 
 EXPOSE 8000
 
