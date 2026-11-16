@@ -1041,6 +1041,16 @@ def stop_monitor_daemon():
     return {"status": "stopped"}
 
 
+@app.on_event("startup")
+def startup_event():
+    init_db()
+    try:
+        res = start_monitor_daemon()
+        logger.info(f"Monitor daemon auto-started on server boot: {res}")
+    except Exception as e:
+        logger.error(f"Error auto-starting monitor daemon on startup: {e}")
+
+
 # ==========================================
 # Web UI Pages
 # ==========================================

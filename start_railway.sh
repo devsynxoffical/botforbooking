@@ -30,10 +30,6 @@ export PROXY_URL="${PROXY_URL:-socks5://127.0.0.1:9050}"
 export HTTPS_PROXY="${HTTPS_PROXY:-socks5://127.0.0.1:9050}"
 export HTTP_PROXY="${HTTP_PROXY:-socks5://127.0.0.1:9050}"
 
-# Start live ultra-fast monitor in background
-echo "⚡ Launching Live Monitor Daemon..."
-python3 fast_monitor.py --interval 3.0 >/tmp/fast_monitor.log 2>&1 &
-
 # Start Web Queue & Admin API in foreground so Railway binds immediately
 echo "🌐 Launching Application Web Server on port $PORT..."
 exec python3 -m uvicorn queue_server:app --host 0.0.0.0 --port "$PORT"

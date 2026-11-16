@@ -402,7 +402,7 @@ async def run_fast_monitor_daemon(interval_sec: float = 3.0):
     print("=" * 70)
 
     config = load_config()
-    current_proxy = config.get("proxy") or os.environ.get("PROXY_URL") or os.environ.get("HTTPS_PROXY")
+    current_proxy = resolve_effective_proxy(config.get("proxy"))
     prober = FastPortalProber(proxy=current_proxy)
 
     try:
@@ -411,7 +411,7 @@ async def run_fast_monitor_daemon(interval_sec: float = 3.0):
 
             # Dynamically reload proxy if config changed in Admin UI
             latest_config = load_config()
-            new_proxy = latest_config.get("proxy") or os.environ.get("PROXY_URL") or os.environ.get("HTTPS_PROXY")
+            new_proxy = resolve_effective_proxy(latest_config.get("proxy"))
             if new_proxy != prober.proxy:
                 print(f"🔄 Proxy configuration updated: {new_proxy}. Re-initializing client...")
                 await prober.close()
