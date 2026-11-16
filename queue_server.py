@@ -1021,7 +1021,7 @@ def start_monitor_daemon():
     python_bin = get_python_bin()
     script = BASE_DIR / "fast_monitor.py"
     log_file = open("/tmp/fast_monitor.log", "a")
-    MONITOR_PROCESS = subprocess.Popen([python_bin, str(script)], stdout=log_file, stderr=log_file)
+    MONITOR_PROCESS = subprocess.Popen([python_bin, "-u", str(script)], stdout=log_file, stderr=log_file)
     return {"status": "started", "pid": MONITOR_PROCESS.pid}
 
 

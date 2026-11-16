@@ -26,6 +26,7 @@ else
 fi
 
 # Set default proxy environment variables to local Tor SOCKS5
+export PYTHONUNBUFFERED=1
 export PROXY_URL="${PROXY_URL:-socks5://127.0.0.1:9050}"
 export HTTPS_PROXY="${HTTPS_PROXY:-socks5://127.0.0.1:9050}"
 export HTTP_PROXY="${HTTP_PROXY:-socks5://127.0.0.1:9050}"
