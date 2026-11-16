@@ -537,6 +537,32 @@ def trigger_test_broadcast():
     return res
 
 
+@app.post("/api/telegram/test-confirmation")
+def trigger_test_confirmation():
+    config = load_config()
+    tg = config.get("telegram", {})
+    bot_token = tg.get("bot_token", "").strip()
+    chat_id = tg.get("chat_id", "").strip()
+    if not bot_token or not chat_id:
+        raise HTTPException(status_code=400, detail="Telegram not configured")
+
+    sample_order = {
+        "name": "BARAKAT BARAKAT",
+        "doc_number": "Z2517349G",
+        "province": "Barcelona",
+        "procedure": "POLICÍA-TOMA DE HUELLAS (EXPEDICIÓN DE TARJETA) INICIAL, RENOVACIÓN, DUPLICADO Y LEY 14/2013",
+        "office": "CNP COMISARIA VIC, BISBE MORGADES, 4, VIC",
+        "order_id": "147024"
+    }
+    send_booking_confirmation_alert(
+        sample_order,
+        office_address="CNP COMISARIA VIC, BISBE MORGADES, 4, VIC",
+        appointment_dt=datetime.datetime.now().strftime("%d/%m/%Y %H:%M"),
+        justificante="6FB385XU"
+    )
+    return {"status": "success", "message": "Sample booking confirmation sent to Telegram"}
+
+
 @app.get("/api/telegram/bot-info")
 async def get_telegram_bot_info():
     config = load_config()
