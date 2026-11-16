@@ -6,6 +6,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     curl \
     gcc \
     tor \
+    tor-geoipdb \
     netcat-openbsd \
     procps \
     libglib2.0-0 \
