@@ -7,3 +7,4 @@ httpx[http2,socks]>=0.28.0
 socksio>=1.0.0
 h2>=4.1.0
 psycopg2-binary>=2.9.9
+cryptography>=41.0.0

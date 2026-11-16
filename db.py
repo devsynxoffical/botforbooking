@@ -220,7 +220,7 @@ def init_db():
                         updated_at TEXT NOT NULL
                     )
                 """)
-                for col in ["birth_date", "birth_country", "card_expiry_date", "certificate_path", "certificate_password"]:
+                for col in ["birth_date", "birth_country", "card_expiry_date", "certificate_path", "certificate_password", "color_tag", "max_date"]:
                     try:
                         conn.execute(f"ALTER TABLE orders ADD COLUMN IF NOT EXISTS {col} TEXT")
                     except Exception:
@@ -299,7 +299,7 @@ def init_db():
                 updated_at TEXT NOT NULL
             )
         """)
-        for col in ["birth_date", "birth_country", "card_expiry_date", "certificate_path", "certificate_password"]:
+        for col in ["birth_date", "birth_country", "card_expiry_date", "certificate_path", "certificate_password", "color_tag", "max_date"]:
             try:
                 conn.execute(f"ALTER TABLE orders ADD COLUMN {col} TEXT")
             except sqlite3.OperationalError:

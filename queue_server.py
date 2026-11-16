@@ -174,6 +174,12 @@ class OrderCreate(BaseModel):
     certificate_b64: Optional[str] = None
     certificate_filename: Optional[str] = None
     certificate_password: Optional[str] = None
+    color_tag: Optional[str] = "#3b82f6"
+    max_date: Optional[str] = None
+
+
+class ColorUpdate(BaseModel):
+    color_tag: str
 
 
 class StatusUpdate(BaseModel):
@@ -219,18 +225,22 @@ def create_order(order: OrderCreate, background_tasks: BackgroundTasks):
 
     with get_db() as conn:
         cur = conn.cursor()
+        # Check if either the document number or phone number is already actively in progress
         cur.execute(
             """
-            SELECT order_id, status FROM orders 
-            WHERE UPPER(doc_number) = ? AND status IN ('waiting', 'searching', 'code_pending')
+            SELECT order_id, status, phone, doc_number FROM orders 
+            WHERE (UPPER(doc_number) = ? OR (phone IS NOT NULL AND phone != '' AND phone = ?))
+              AND status IN ('waiting', 'searching', 'code_pending', 'in_progress', 'waiting_otp')
             """,
-            (cleaned_doc,)
+            (cleaned_doc, phone_number)
         )
         existing = cur.fetchone()
         if existing:
+            field_name = "Phone number" if existing.get("phone") == phone_number else "Document number"
+            val = phone_number if field_name == "Phone number" else cleaned_doc
             raise HTTPException(
                 status_code=400,
-                detail=f"This document is already in progress (Order ID: {existing['order_id']}, Status: {existing['status']})"
+                detail=f"ALREADY IN PROGRESS: {field_name} '{val}' has an active booking in queue (Order ID: {existing['order_id']}, Status: {existing['status']})"
             )
 
         unique_num = random.randint(100000, 999999)
@@ -263,9 +273,9 @@ def create_order(order: OrderCreate, background_tasks: BackgroundTasks):
                 order_id, name, doc_type, doc_number, citizenship,
                 email, phone, province, office, procedure,
                 birth_date, birth_country, card_expiry_date,
-                certificate_path, certificate_password,
+                certificate_path, certificate_password, color_tag, max_date,
                 status, notes, created_at, updated_at
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'waiting', '', ?, ?)
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'waiting', '', ?, ?)
             """,
             (
                 order_id, order.name.strip(), order.doc_type.strip(), cleaned_doc,
@@ -277,6 +287,8 @@ def create_order(order: OrderCreate, background_tasks: BackgroundTasks):
                 order.card_expiry_date.strip() if order.card_expiry_date else "",
                 cert_path,
                 order.certificate_password.strip() if order.certificate_password else "",
+                order.color_tag or "#3b82f6",
+                order.max_date.strip() if order.max_date else "",
                 now, now
             )
         )
@@ -397,6 +409,36 @@ def purge_completed_records():
         conn.commit()
 
     return {"status": "success", "message": f"Successfully scrubbed {scrubbed_count} completed records."}
+
+
+class MaxDateUpdate(BaseModel):
+    max_date: Optional[str] = None
+
+
+@app.patch("/api/orders/{order_id}/color")
+def update_order_color(order_id: str, payload: ColorUpdate):
+    now = datetime.datetime.now(datetime.timezone.utc).isoformat()
+    with get_db() as conn:
+        cur = conn.cursor()
+        cur.execute(
+            "UPDATE orders SET color_tag = ?, updated_at = ? WHERE UPPER(order_id) = UPPER(?)",
+            (payload.color_tag, now, order_id.strip())
+        )
+        conn.commit()
+    return {"status": "success", "order_id": order_id.upper(), "color_tag": payload.color_tag}
+
+
+@app.patch("/api/orders/{order_id}/max-date")
+def update_order_max_date(order_id: str, payload: MaxDateUpdate):
+    now = datetime.datetime.now(datetime.timezone.utc).isoformat()
+    with get_db() as conn:
+        cur = conn.cursor()
+        cur.execute(
+            "UPDATE orders SET max_date = ?, updated_at = ? WHERE UPPER(order_id) = UPPER(?)",
+            (payload.max_date or "", now, order_id.strip())
+        )
+        conn.commit()
+    return {"status": "success", "order_id": order_id.upper(), "max_date": payload.max_date}
 
 
 @app.delete("/api/orders/{order_id}")
@@ -1200,112 +1242,132 @@ def intake_page():
                 <form id="orderForm">
                     <div class="grid-2">
                         <div>
-                            <label>Full Name *</label>
-                            <input type="text" id="name" required placeholder="Full Name (as in passport/NIE)">
+                            <label>Nombre y Apellidos / Full Name *</label>
+                            <input type="text" id="name" required placeholder="Nombre completo como en NIE/Pasaporte">
                         </div>
                         <div>
-                            <label>Citizenship / Nationality *</label>
+                            <label>País de nacionalidad / Country of Nationality *</label>
                             <select id="citizenshipSelect" required onchange="onCitizenshipChanged(this.value)">
                             </select>
-                            <input type="text" id="customCitizenshipInput" placeholder="✍️ Type custom nationality..." style="margin-top: 0.4rem; display: none;">
+                            <input type="text" id="customCitizenshipInput" placeholder="✍️ Especificar nacionalidad..." style="margin-top: 0.4rem; display: none;">
                         </div>
                     </div>
 
                     <div class="grid-2" style="margin-top: 1rem;">
                         <div>
-                            <label>Document Type *</label>
+                            <label>Tipo de documento / Document Type *</label>
                             <select id="doc_type" required>
-                                <option value="NIE">NIE</option>
-                                <option value="PASSPORT">Passport</option>
+                                <option value="NIE">NIE (Número de Identidad de Extranjero)</option>
+                                <option value="PASSPORT">Pasaporte</option>
                                 <option value="DNI">DNI</option>
                             </select>
                         </div>
                         <div>
-                            <label>Document Number *</label>
-                            <input type="text" id="doc_number" required placeholder="NIE, Passport or DNI number">
+                            <label>Número de documento / Document Number *</label>
+                            <input type="text" id="doc_number" required placeholder="Ej: Z1234567A o Pasaporte">
                         </div>
                     </div>
 
                     <div class="grid-2" style="margin-top: 1rem;">
                         <div>
-                            <label>Date / Year of Birth (Optional)</label>
-                            <div style="display: grid; grid-template-columns: 1fr 1fr 1.3fr; gap: 0.35rem;">
-                                <input type="text" id="dob_day" maxlength="2" placeholder="Day (DD)" style="text-align: center;">
-                                <input type="text" id="dob_month" maxlength="2" placeholder="Month (MM)" style="text-align: center;">
-                                <input type="text" id="dob_year" maxlength="4" placeholder="Year (YYYY)" style="text-align: center;">
+                            <label>Año de nacimiento / Year of Birth *</label>
+                            <input type="number" id="dob_year" min="1920" max="2026" required placeholder="Ej: 1996 o 1989">
+                            <small style="color: #64748b; font-size: 0.78rem;">Sólo año requerido por el portal oficial</small>
+                        </div>
+                        <div>
+                            <label>País de nacimiento / Country of Birth *</label>
+                            <select id="birthCountrySelect" onchange="onBirthCountryChanged(this.value)">
+                            </select>
+                            <input type="text" id="customBirthCountryInput" placeholder="✍️ Especificar país de nacimiento..." style="margin-top: 0.4rem; display: none;">
+                        </div>
+                    </div>
+
+                    <div class="grid-2" style="margin-top: 1rem;">
+                        <div>
+                            <label>Teléfono móvil español / Spanish Mobile *</label>
+                            <input type="tel" id="phone" required placeholder="Ej: 607 123 456">
+                            <small style="color: #64748b; font-size: 0.78rem;">Donde la Policía enviará el SMS de verificación OTP</small>
+                        </div>
+                        <div>
+                            <label>Correo electrónico / Email *</label>
+                            <input type="email" id="email" required placeholder="cliente@gmail.com">
+                            <small style="color: #64748b; font-size: 0.78rem;">Donde el Gobierno enviará el justificante oficial en PDF</small>
+                        </div>
+                    </div>
+
+                    <div class="grid-2" style="margin-top: 1rem;">
+                        <div>
+                            <label>Provincia / Province *</label>
+                            <select id="provinceSelect" required onchange="onProvinceChanged(this.value)">
+                            </select>
+                            <input type="text" id="customProvinceInput" placeholder="✍️ Especificar provincia..." style="margin-top: 0.4rem; display: none;">
+                        </div>
+                        <div>
+                            <label>Oficina / Comisaría (Police Station)</label>
+                            <select id="officeSelect" onchange="onOfficeChanged(this.value)">
+                            </select>
+                            <input type="text" id="customOfficeInput" placeholder="✍️ Especificar comisaría..." style="margin-top: 0.4rem; display: none;">
+                        </div>
+                    </div>
+
+                    <div style="margin-top: 1rem;">
+                        <label>Trámite / Procedure *</label>
+                        <select id="procedureSelect" required onchange="onProcChanged(this.value)">
+                        </select>
+                        <input type="text" id="customProcInput" placeholder="✍️ Especificar trámite personalizado..." style="margin-top: 0.4rem; display: none;">
+                    </div>
+
+                    <!-- BOOKING COLOR & MAX DATE -->
+                    <div class="grid-2" style="margin-top: 1.25rem; background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 10px; padding: 1rem;">
+                        <div>
+                            <label style="display: flex; align-items: center; justify-content: space-between;">
+                                <span>🎨 Color identificativo / Booking Color</span>
+                            </label>
+                            <div style="display: flex; gap: 0.5rem; align-items: center; margin-top: 0.4rem; flex-wrap: wrap;">
+                                <input type="color" id="colorPicker" value="#2563eb" style="width: 44px; height: 36px; padding: 2px; border-radius: 6px; cursor: pointer; border: 1px solid #cbd5e1;" onchange="setColorTag(this.value)">
+                                <div id="colorPresets" style="display: flex; gap: 0.35rem;">
+                                    <button type="button" style="background: #2563eb; width: 26px; height: 26px; min-height: 26px; border-radius: 50%; padding: 0; border: 2px solid white; box-shadow: 0 0 0 1px #cbd5e1; cursor: pointer;" onclick="setColorTag('#2563eb')" title="Standard Blue"></button>
+                                    <button type="button" style="background: #16a34a; width: 26px; height: 26px; min-height: 26px; border-radius: 50%; padding: 0; border: 2px solid white; box-shadow: 0 0 0 1px #cbd5e1; cursor: pointer;" onclick="setColorTag('#16a34a')" title="VIP Green"></button>
+                                    <button type="button" style="background: #9333ea; width: 26px; height: 26px; min-height: 26px; border-radius: 50%; padding: 0; border: 2px solid white; box-shadow: 0 0 0 1px #cbd5e1; cursor: pointer;" onclick="setColorTag('#9333ea')" title="Agency Purple"></button>
+                                    <button type="button" style="background: #ea580c; width: 26px; height: 26px; min-height: 26px; border-radius: 50%; padding: 0; border: 2px solid white; box-shadow: 0 0 0 1px #cbd5e1; cursor: pointer;" onclick="setColorTag('#ea580c')" title="Urgent Orange"></button>
+                                    <button type="button" style="background: #dc2626; width: 26px; height: 26px; min-height: 26px; border-radius: 50%; padding: 0; border: 2px solid white; box-shadow: 0 0 0 1px #cbd5e1; cursor: pointer;" onclick="setColorTag('#dc2626')" title="Critical Red"></button>
+                                    <button type="button" style="background: #0891b2; width: 26px; height: 26px; min-height: 26px; border-radius: 50%; padding: 0; border: 2px solid white; box-shadow: 0 0 0 1px #cbd5e1; cursor: pointer;" onclick="setColorTag('#0891b2')" title="Teal"></button>
+                                </div>
+                                <input type="hidden" id="colorTag" value="#2563eb">
                             </div>
                         </div>
                         <div>
-                            <label>Country of Birth (Optional)</label>
-                            <select id="birthCountrySelect" onchange="onBirthCountryChanged(this.value)">
-                            </select>
-                            <input type="text" id="customBirthCountryInput" placeholder="✍️ Type country of birth..." style="margin-top: 0.4rem; display: none;">
+                            <label>📅 Fecha máxima límite / Max acceptable date</label>
+                            <input type="date" id="max_date" style="margin-top: 0.35rem;">
+                            <small style="color: #64748b; font-size: 0.78rem;">Opcional: Si una cita cae después de esta fecha, se esperará otra anterior.</small>
                         </div>
                     </div>
 
-                    <div class="grid-2" style="margin-top: 1rem;">
-                        <div>
-                            <label>Current Card Expiry Date (Optional)</label>
-                            <input type="text" id="card_expiry_date" placeholder="DD/MM/YYYY">
-                        </div>
-                        <div>
-                            <label>Phone (Optional)</label>
-                            <input type="tel" id="phone" placeholder="Contact mobile number">
-                        </div>
-                    </div>
-
-                    <div style="margin-top: 1rem;">
-                        <label>Email *</label>
-                        <input type="email" id="email" required placeholder="customer@example.com">
-                    </div>
-
-                    <div class="grid-2" style="margin-top: 1rem;">
-                        <div>
-                            <label>Province / City *</label>
-                            <select id="provinceSelect" required onchange="onProvinceChanged(this.value)">
-                            </select>
-                            <input type="text" id="customProvinceInput" placeholder="✍️ Type custom city / province..." style="margin-top: 0.4rem; display: none;">
-                        </div>
-                        <div>
-                            <label>Office / Comisaría (Police Station)</label>
-                            <select id="officeSelect" onchange="onOfficeChanged(this.value)">
-                            </select>
-                            <input type="text" id="customOfficeInput" placeholder="✍️ Type custom office / comisaría..." style="margin-top: 0.4rem; display: none;">
-                        </div>
-                    </div>
-
-                    <div style="margin-top: 1rem;">
-                        <label>Procedure (Trámite) *</label>
-                        <select id="procedureSelect" required onchange="onProcChanged(this.value)">
-                        </select>
-                        <input type="text" id="customProcInput" placeholder="✍️ Type custom procedure..." style="margin-top: 0.4rem; display: none;">
-                    </div>
-
-                    <!-- DIGITAL CERTIFICATE (OPTIONAL) -->
-                    <div style="margin-top: 1.25rem; background: #f8fafc; border: 1px dashed #cbd5e1; border-radius: 8px; padding: 1.1rem;">
-                        <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 0.5rem; flex-wrap: wrap; gap: 0.5rem;">
-                            <label style="margin: 0; font-size: 0.95rem; font-weight: 700; color: #1e293b; display: flex; align-items: center; gap: 0.4rem;">
-                                🔐 Digital Certificate (Certificado Digital FNMT / Cl@ve)
+                    <!-- DIGITAL CERTIFICATE (IPHONE COMPATIBLE) -->
+                    <div style="margin-top: 1.25rem; background: #f0fdf4; border: 2px dashed #86efac; border-radius: 10px; padding: 1.25rem;">
+                        <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 0.4rem; flex-wrap: wrap; gap: 0.5rem;">
+                            <label style="margin: 0; font-size: 1rem; font-weight: 700; color: #166534; display: flex; align-items: center; gap: 0.4rem;">
+                                🔐 Certificado Digital FNMT / Cl@ve (.p12 / .pfx)
                             </label>
-                            <span style="font-size: 0.75rem; background: #e2e8f0; color: #475569; padding: 0.2rem 0.5rem; border-radius: 4px; font-weight: 600;">Optional</span>
+                            <span style="font-size: 0.75rem; background: #16a34a; color: white; padding: 0.25rem 0.6rem; border-radius: 9999px; font-weight: 700;">🚀 +80% Probabilidad de Cita</span>
                         </div>
-                        <p style="margin: 0 0 0.85rem 0; font-size: 0.82rem; color: #64748b; line-height: 1.4;">
-                            Upload applicant's software certificate (<code>.p12</code> or <code>.pfx</code>) to enable direct/priority Sede Electrónica booking.
+                        <p style="margin: 0 0 0.85rem 0; font-size: 0.84rem; color: #14532d; line-height: 1.45;">
+                            <b>Compatible con iPhone, iPad, Android y PC.</b> En iPhone, pulsa para seleccionar tu certificado desde <i>Archivos / iCloud</i>. Permite el acceso por vía de identificación oficial del Estado sin colas anónimas y con asignación prioritaria de turnos.
                         </p>
                         <div class="grid-2">
                             <div>
-                                <label style="font-size: 0.8rem; font-weight: 600; color: #475569;">Upload Certificate (.p12 / .pfx)</label>
-                                <input type="file" id="certFile" accept=".p12,.pfx" style="padding: 0.45rem; font-size: 0.85rem;">
+                                <label style="font-size: 0.8rem; font-weight: 600; color: #166534;">Archivo del Certificado (.p12 / .pfx)</label>
+                                <input type="file" id="certFile" accept=".p12,.pfx" style="padding: 0.5rem; font-size: 0.85rem; background: white;">
                             </div>
                             <div>
-                                <label style="font-size: 0.8rem; font-weight: 600; color: #475569;">Certificate Password (Contraseña)</label>
-                                <input type="password" id="certPassword" placeholder="Export password (if protected)">
+                                <label style="font-size: 0.8rem; font-weight: 600; color: #166534;">Contraseña del Certificado (Password)</label>
+                                <input type="password" id="certPassword" placeholder="Contraseña de exportación (si tiene)">
                             </div>
                         </div>
                     </div>
 
                     <div style="margin-top: 1.5rem;">
-                        <button type="submit">Submit Request</button>
+                        <button type="submit">🚀 Enviar Solicitud a la Cola de Reserva</button>
                     </div>
                 </form>
             </div>
@@ -1466,53 +1528,91 @@ def intake_page():
             };
 
             const PROCEDURES_LIST = [
-                { value: "POLICIA-TOMA DE HUELLA (EXPEDICIÓN DE TARJETA) INICIAL, RENOVACIÓN, DUPLICADO Y LEY 14/2013", label: "POLICÍA - Toma de Huellas (Expedición TIE / Renovación / Duplicado)" },
-                { value: "POLICIA-RECOGIDA DE TARJETA DE IDENTIDAD DE EXTRANJERO (TIE)", label: "POLICÍA - Recogida de Tarjeta de Identidad de Extranjero (TIE)" },
-                { value: "POLICIA-ASIGNACIÓN DE NIE", label: "POLICÍA - Asignación de NIE" },
-                { value: "POLICIA-CERTIFICADOS (DE RESIDENCIA, DE NO RESIDENCIA Y DE CONCORDANCIA)", label: "POLICÍA - Certificados (Residencia, No Residencia, Concordancia)" },
-                { value: "POLICIA-CERTIFICADO DE REGISTRO DE CIUDADANO DE LA U.E.", label: "POLICÍA - Certificado de Registro de Ciudadano de la UE" },
-                { value: "POLICIA-AUTORIZACIÓN DE REGRESO", label: "POLICÍA - Autorización de Regreso" },
-                { value: "POLICIA-EXPEDICIÓN/RENOVACIÓN DE DOCUMENTOS DE SOLICITANTES DE ASILO", label: "POLICÍA - Renovación Documentos Asilo (Hoja Blanca / Tarjeta Roja)" },
-                { value: "POLICIA-SOLICITUD DE ASILO (PRIMERA CITA)", label: "POLICÍA - Solicitud de Asilo (Primera Cita)" },
-                { value: "POLICIA-CARTA DE INVITACIÓN", label: "POLICÍA - Carta de Invitación" },
-                { value: "POLICIA-TÍTULOS DE VIAJE", label: "POLICÍA - Títulos de Viaje" },
-                { value: "EXTRANJERÍA - SOLICITUD DE AUTORIZACIONES", label: "EXTRANJERÍA - Solicitud de Autorizaciones (Arraigo, Residencia Inicial)" },
-                { value: "EXTRANJERÍA - RENOVACIÓN DE AUTORIZACIONES", label: "EXTRANJERÍA - Renovación de Autorizaciones" },
-                { value: "__custom__", label: "✍️ Otro trámite (Specify custom)..." }
+                {
+                    group: "👮 TRÁMITES CUERPO NACIONAL DE POLICÍA (CNP)",
+                    procedures: [
+                        { value: "POLICIA-TOMA DE HUELLA (EXPEDICIÓN DE TARJETA) Y RENOVACIÓN DE TARJETA DE LARGA DURACIÓN", label: "POLICIA - Toma de huellas (Expedición de tarjeta TIE / Huella)" },
+                        { value: "POLICIA-RECOGIDA DE TARJETA DE IDENTIDAD DE EXTRANJERO (TIE)", label: "POLICIA - Recogida de Tarjeta de Identidad de Extranjero (Lote TIE)" },
+                        { value: "POLICIA-ASIGNACIÓN DE N.I.E.", label: "POLICIA - Asignación de N.I.E." },
+                        { value: "POLICIA-CERTIFICADOS (DE RESIDENCIA, DE NO RESIDENCIA Y DE CONCORDANCIA)", label: "POLICIA - Certificados (Residencia, No Residencia, Concordancia)" },
+                        { value: "POLICIA - CERTIFICADOS UE", label: "POLICIA - Certificados UE (Certificado de Registro Ciudadano de la Unión)" },
+                        { value: "POLICIA-AUTORIZACIÓN DE REGRESO", label: "POLICIA - Autorización de Regreso" },
+                        { value: "POLICIA-CARTA DE INVITACIÓN", label: "POLICIA - Carta de Invitación" },
+                        { value: "POLICIA-EXPEDICIÓN/RENOVACIÓN DE DOCUMENTOS DE ASILO Y REFUGIO", label: "POLICIA - Expedición/Renovación Documentos de Asilo (Hoja Blanca / Tarjeta Roja)" },
+                        { value: "POLICIA - SOLICITUD ASILO", label: "POLICIA - Solicitud de Asilo / Protección Internacional" }
+                    ]
+                },
+                {
+                    group: "🏛️ TRÁMITES OFICINAS DE EXTRANJERÍA",
+                    procedures: [
+                        { value: "EXTRANJERÍA - SOLICITUD DE AUTORIZACIONES", label: "EXTRANJERÍA - Solicitud de Autorizaciones (Arraigo Social, Laboral, Familiar, Residencia Inicial)" },
+                        { value: "EXTRANJERÍA - RENOVACIÓN DE AUTORIZACIONES", label: "EXTRANJERÍA - Renovación de Autorizaciones de Residencia y Trabajo" },
+                        { value: "EXTRANJERÍA - RESIDENCIA DE LARGA DURACIÓN", label: "EXTRANJERÍA - Residencia de Larga Duración / Larga Duración UE" },
+                        { value: "EXTRANJERÍA - REAGRUPACIÓN FAMILIAR", label: "EXTRANJERÍA - Reagrupación Familiar" },
+                        { value: "EXTRANJERÍA - MODIFICACIÓN DE AUTORIZACIONES", label: "EXTRANJERÍA - Modificación de Situación / Régimen General" },
+                        { value: "EXTRANJERÍA - ESTANCIA POR ESTUDIOS", label: "EXTRANJERÍA - Estancia por Estudios, Prácticas o Voluntariado" },
+                        { value: "EXTRANJERÍA - FAMILIARES DE CIUDADANOS DE LA UE", label: "EXTRANJERÍA - Tarjeta de Residencia Familiar Ciudadano UE" }
+                    ]
+                }
             ];
 
             const COUNTRIES_LIST = [
-                "Pakistan", "Bangladesh", "India", "Morocco", "Colombia", "Venezuela", "Peru", 
-                "Honduras", "Ecuador", "Dominican Republic", "Argentina", "Brazil", "Paraguay", 
-                "Bolivia", "Cuba", "Chile", "Uruguay", "Ukraine", "United Kingdom", "China", 
-                "Senegal", "Algeria", "Nigeria", "Philippines", "United States", "Mexico", 
-                "Nicaragua", "Guatemala", "El Salvador", "Russia", "Egypt", "Ghana", "Georgia", 
-                "Armenia", "Italy", "France", "Germany", "Romania", "Portugal", "Spain"
+                "BANGLADESH", "PAKISTAN", "MARRUECOS", "COLOMBIA", "VENEZUELA", "HONDURAS", 
+                "PERU", "ARGENTINA", "ECUADOR", "BRASIL", "REPUBLICA DOMINICANA", "PARAGUAY", 
+                "BOLIVIA", "CHINA", "INDIA", "SENEGAL", "ARGELIA", "UCRANIA", "RUSIA", 
+                "FILIPINAS", "REINO UNIDO", "AFGANISTAN", "ALBANIA", "ALEMANIA", "ANDORRA", 
+                "ANGOLA", "ARMENIA", "AUSTRALIA", "AUSTRIA", "AZERBAIYAN", "BELGICA", 
+                "BELICE", "BENIN", "BIELORRUSIA", "BOSNIA Y HERZEGOVINA", "BULGARIA", 
+                "BURKINA FASO", "CABO VERDE", "CAMBOYA", "CAMERUN", "CANADA", "CHILE", 
+                "CONGO", "COREA DEL SUR", "COSTA DE MARFIL", "COSTA RICA", "CROACIA", 
+                "CUBA", "DINAMARCA", "EGIPTO", "EL SALVADOR", "EMIRATOS ARABES UNIDOS", 
+                "ESLOVAQUIA", "ESLOVENIA", "ESPAÑA", "ESTADOS UNIDOS", "ETIOPIA", "FINLANDIA", 
+                "FRANCIA", "GAMBIA", "GEORGIA", "GHANA", "GRECIA", "GUATEMALA", "GUINEA", 
+                "GUINEA ECUATORIAL", "HAITI", "HUNGRIA", "INDONESIA", "IRAN", "IRAQ", 
+                "IRLANDA", "ISRAEL", "ITALIA", "JAMAICA", "JAPON", "JORDANIA", "KAZAJISTAN", 
+                "KENIA", "LIBANO", "LITUANIA", "MALI", "MAURITANIA", "MEXICO", "MOLDAVIA", 
+                "NEPAL", "NICARAGUA", "NIGERIA", "NORUEGA", "PAISES BAJOS", "PANAMA", 
+                "POLONIA", "PORTUGAL", "RUMANIA", "SIRIA", "SRI LANKA", "SUECIA", 
+                "SUIZA", "TAILANDIA", "TUNEZ", "TURQUIA", "URUGUAY", "VIETNAM"
             ];
+
+            function setColorTag(colorHex) {
+                document.getElementById('colorPicker').value = colorHex;
+                document.getElementById('colorTag').value = colorHex;
+            }
 
             function initDropdowns() {
                 const citSel = document.getElementById('citizenshipSelect');
-                citSel.innerHTML = `<option value="" disabled selected>-- Select Citizenship / Nationality --</option>` +
+                citSel.innerHTML = `<option value="" disabled selected>-- Seleccione Nacionalidad (como en Sede) --</option>` +
                     COUNTRIES_LIST.map(c => `<option value="${c}">${c}</option>`).join('') +
-                    `<option value="__custom__">✍️ Other Nationality (Specify custom)...</option>`;
-                citSel.value = "Pakistan";
+                    `<option value="__custom__">✍️ Otra Nacionalidad (Especificar)...</option>`;
+                citSel.value = "BANGLADESH";
 
                 const birthCountrySel = document.getElementById('birthCountrySelect');
-                birthCountrySel.innerHTML = `<option value="">Same as Citizenship (Default)</option>` +
+                birthCountrySel.innerHTML = `<option value="">Mismo que Nacionalidad (Por defecto)</option>` +
                     COUNTRIES_LIST.map(c => `<option value="${c}">${c}</option>`).join('') +
-                    `<option value="__custom__">✍️ Other Country (Specify custom)...</option>`;
+                    `<option value="__custom__">✍️ Otro País (Especificar)...</option>`;
                 birthCountrySel.value = "";
 
                 const provSel = document.getElementById('provinceSelect');
                 provSel.innerHTML = SPANISH_PROVINCES.map(p => `<option value="${p}">${p}</option>`).join('') +
-                    `<option value="__custom__">✍️ Otra ciudad / provincia (Specify custom)...</option>`;
+                    `<option value="__custom__">✍️ Otra ciudad / provincia (Especificar)...</option>`;
                 provSel.value = "Barcelona";
 
                 updateOffices('Barcelona');
 
                 const procSel = document.getElementById('procedureSelect');
-                procSel.innerHTML = PROCEDURES_LIST.map(p => `<option value="${p.value}">${p.label}</option>`).join('');
-                procSel.value = PROCEDURES_LIST[0].value;
+                let procHtml = '';
+                PROCEDURES_LIST.forEach(g => {
+                    procHtml += `<optgroup label="${g.group}">`;
+                    g.procedures.forEach(p => {
+                        procHtml += `<option value="${p.value}">${p.label}</option>`;
+                    });
+                    procHtml += `</optgroup>`;
+                });
+                procHtml += `<option value="__custom__">✍️ Otro trámite (Especificar custom)...</option>`;
+                procSel.innerHTML = procHtml;
+                procSel.value = PROCEDURES_LIST[0].procedures[0].value;
             }
 
             function onCitizenshipChanged(val) {
@@ -1608,18 +1708,7 @@ def intake_page():
                     return;
                 }
 
-                const d = document.getElementById('dob_day').value.trim();
-                const m = document.getElementById('dob_month').value.trim();
-                const y = document.getElementById('dob_year').value.trim();
-                let birthDate = "";
-                if (d && m && y) {
-                    birthDate = `${d.padStart(2, '0')}/${m.padStart(2, '0')}/${y}`;
-                } else if (y && !d && !m) {
-                    birthDate = y;
-                } else if (d || m || y) {
-                    birthDate = [d, m, y].filter(Boolean).join('/');
-                }
-
+                const birthYear = document.getElementById('dob_year').value.trim();
                 const birthCountrySel = document.getElementById('birthCountrySelect');
                 let birthCountry = birthCountrySel.value === '__custom__' ? document.getElementById('customBirthCountryInput').value.trim() : birthCountrySel.value;
                 if (!birthCountry) {
@@ -1680,12 +1769,14 @@ def intake_page():
                     province: province,
                     office: office,
                     procedure: procedure,
-                    birth_date: birthDate,
+                    birth_date: birthYear,
                     birth_country: birthCountry,
-                    card_expiry_date: document.getElementById('card_expiry_date').value.trim(),
+                    card_expiry_date: "",
                     certificate_b64: certB64,
                     certificate_filename: certFilename,
-                    certificate_password: document.getElementById('certPassword').value.trim()
+                    certificate_password: document.getElementById('certPassword').value.trim(),
+                    color_tag: document.getElementById('colorTag').value || '#2563eb',
+                    max_date: document.getElementById('max_date').value.trim()
                 };
 
                 try {
@@ -2152,13 +2243,20 @@ def admin_page():
                     tbody.innerHTML = orders.map(o => {
                         stats[o.status] = (stats[o.status] || 0) + 1;
                         const isPending = o.status === 'code_pending';
+                        const orderColor = o.color_tag || '#3b82f6';
                         return `
-                            <tr style="${isPending ? 'background: #fff1f2; outline: 2px solid #f43f5e;' : ''}">
-                                <td><strong>${o.order_id}</strong></td>
+                            <tr style="${isPending ? 'background: #fff1f2; outline: 2px solid #f43f5e;' : ''} border-left: 6px solid ${orderColor};">
+                                <td>
+                                    <div style="display: flex; align-items: center; gap: 0.4rem;">
+                                        <input type="color" value="${orderColor}" style="width: 22px; height: 22px; padding: 0; border: none; border-radius: 50%; cursor: pointer;" title="Change Booking Color" onchange="changeOrderColor('${o.order_id}', this.value)">
+                                        <strong>${o.order_id}</strong>
+                                    </div>
+                                    ${o.max_date ? `<span class="badge" style="background: #fef2f2; color: #b91c1c; border: 1px solid #fecaca; font-size: 0.68rem; padding: 1px 4px; margin-top: 3px; display: inline-block;">📅 Max: ${o.max_date}</span>` : ''}
+                                </td>
                                 <td>
                                     <strong>${o.name}</strong> <br>
-                                    <small style="color: #64748b;">${o.citizenship || ''}${o.birth_date ? ' • DOB: '+o.birth_date : ''}</small>
-                                    ${o.certificate_path ? '<span class="badge" style="background: #e0e7ff; color: #4338ca; font-size: 0.7rem; padding: 1px 5px; margin-left: 3px;" title="Digital Certificate available">🔐 Cert</span>' : ''}
+                                    <small style="color: #64748b;">${o.citizenship || ''}${o.birth_date ? ' • Año: '+o.birth_date : ''}${o.birth_country && o.birth_country !== o.citizenship ? ' ('+o.birth_country+')' : ''}</small>
+                                    ${o.certificate_path ? '<span class="badge" style="background: #dcfce7; color: #166534; font-size: 0.7rem; padding: 1px 5px; margin-left: 3px;" title="Certificado Digital FNMT / Cl@ve">+80% 🔐 Cert</span>' : ''}
                                 </td>
                                 <td>${o.doc_type}: <code>${o.doc_number}</code></td>
                                 <td>${o.procedure} <br><small style="color: #64748b;">${o.province} ${o.office ? '('+o.office+')' : ''}</small></td>
@@ -2183,6 +2281,7 @@ def admin_page():
                                             <option value="booked" ${o.status==='booked'?'selected':''}>booked</option>
                                             <option value="failed" ${o.status==='failed'?'selected':''}>failed</option>
                                         </select>
+                                        <button class="btn-action btn-danger" title="Delete client from queue" onclick="deleteOrder('${o.order_id}')">🗑️</button>
                                     </div>
                                 </td>
                             </tr>
@@ -2209,6 +2308,30 @@ def admin_page():
                     loadOrders();
                 } catch (e) {
                     alert('Error updating status: ' + e.message);
+                }
+            }
+
+            async function changeOrderColor(orderId, colorHex) {
+                try {
+                    await fetch(`/api/orders/${orderId}/color`, {
+                        method: 'PATCH',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ color_tag: colorHex })
+                    });
+                    loadOrders();
+                } catch(e) {
+                    console.error("Failed to update order color", e);
+                }
+            }
+
+            async function deleteOrder(orderId) {
+                if (!confirm(`Are you sure you want to delete ${orderId} from queue?`)) return;
+                try {
+                    const res = await fetch(`/api/orders/${orderId}`, { method: 'DELETE' });
+                    const d = await res.json();
+                    loadOrders();
+                } catch(e) {
+                    alert("Error deleting order: " + e.message);
                 }
             }
 

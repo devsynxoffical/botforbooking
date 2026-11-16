@@ -156,6 +156,30 @@ def run_auto_booking(order_id: str, headless: bool = False) -> Dict[str, Any]:
 
     proxy_config = {"server": proxy_str} if proxy_str else None
 
+    # Load Client Digital Certificate if provided (.p12 / .pfx)
+    client_certs = []
+    cert_path = order.get("certificate_path")
+    cert_pwd = order.get("certificate_password") or ""
+    if cert_path and os.path.exists(cert_path):
+        print(f"🔐 Client Certificate Detected: {cert_path}")
+        try:
+            pem_path = str(cert_path) + ".pem"
+            if not os.path.exists(pem_path):
+                import subprocess
+                subprocess.run(
+                    ["openssl", "pkcs12", "-in", cert_path, "-out", pem_path, "-nodes", "-passin", f"pass:{cert_pwd}"],
+                    capture_output=True, check=False
+                )
+            if os.path.exists(pem_path):
+                client_certs.append({
+                    "origin": "https://icp.administracionelectronica.gob.es",
+                    "certPath": pem_path,
+                    "keyPath": pem_path
+                })
+                print("✅ Digital certificate prepared for authenticated government portal access!")
+        except Exception as e:
+            print(f"⚠️ Could not prepare client certificate: {e}")
+
     with sync_playwright() as p:
         # Launch browser (visible by default so operator can solve CAPTCHA if prompted)
         browser = p.chromium.launch(
@@ -163,10 +187,14 @@ def run_auto_booking(order_id: str, headless: bool = False) -> Dict[str, Any]:
             args=["--start-maximized", "--disable-blink-features=AutomationControlled"],
             proxy=proxy_config
         )
-        context = browser.new_context(
-            no_viewport=True,
-            user_agent="Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36"
-        )
+        context_args = {
+            "no_viewport": True,
+            "user_agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36"
+        }
+        if client_certs:
+            context_args["client_certificates"] = client_certs
+
+        context = browser.new_context(**context_args)
         page = context.new_page()
 
         try:
@@ -322,11 +350,46 @@ def run_auto_booking(order_id: str, headless: bool = False) -> Dict[str, Any]:
                 browser.close()
                 return {"status": "no_slots", "message": "No slots available at final step"}
 
-            # Slots found! Select first radio/option if present
-            radio_slot = page.locator('input[type="radio"][name*="cita"]').first
-            if radio_slot.is_visible():
-                print("👉 Auto-selecting first available appointment slot...")
-                radio_slot.check()
+            # Slots found! Check against max_date if specified
+            radio_slots = page.locator('input[type="radio"][name*="cita"]').all()
+            chosen_slot = None
+            max_date_str = str(order.get("max_date") or "").strip()
+            max_dt = None
+            if max_date_str:
+                try:
+                    max_dt = datetime.datetime.strptime(max_date_str, "%Y-%m-%d").date()
+                except Exception:
+                    pass
+
+            if radio_slots:
+                print(f"👉 Found {len(radio_slots)} appointment slot option(s)...")
+                for r in radio_slots:
+                    try:
+                        parent_text = r.locator("..").inner_text()
+                        d_match = re.search(r'(\d{2})/(\d{2})/(\d{4})', parent_text)
+                        if d_match and max_dt:
+                            slot_d = datetime.date(int(d_match.group(3)), int(d_match.group(2)), int(d_match.group(1)))
+                            if slot_d <= max_dt:
+                                chosen_slot = r
+                                print(f"   ✅ Selected slot {slot_d} (within client max date: {max_dt})")
+                                break
+                            else:
+                                print(f"   ⏩ Slot {slot_d} is after client max date ({max_dt}). Skipping...")
+                        else:
+                            chosen_slot = r
+                            break
+                    except Exception:
+                        chosen_slot = r
+                        break
+
+                if not chosen_slot and max_dt:
+                    print(f"⚠️ All available slots exceed client's max date ({max_date_str}). Returning to queue.")
+                    update_order_status(order_id, "waiting", f"Citas disponibles superan fecha límite ({max_date_str}). Esperando turno anterior.")
+                    browser.close()
+                    return {"status": "skipped_due_to_max_date", "message": f"Slots exceed max date {max_date_str}"}
+
+                target_slot = chosen_slot or radio_slots[0]
+                target_slot.check()
                 page.locator('input#btnSiguiente, input[value="Siguiente"]').first.click()
                 page.wait_for_load_state("domcontentloaded")
                 page.wait_for_timeout(2000)
