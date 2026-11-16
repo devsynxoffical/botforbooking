@@ -10,9 +10,9 @@
   "email": "mdmus@postgot.com",
   "portal_url": "https://icp.administracionelectronica.gob.es/icpplus/index.html",
   "telegram": {
-    "enabled": false,
-    "bot_token": "",
-    "chat_id": ""
+    "enabled": true,
+    "bot_token": "6142133668:AAEQluoCjQTH7ROqK3s9sIKaKsOC9r5rkJM",
+    "chat_id": "1537542511"
   },
   "data_retention": {
     "auto_delete_completed": true,
