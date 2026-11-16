@@ -96,7 +96,7 @@ def broadcast_telegram_message(
     url = f"https://api.telegram.org/bot{bot_token.strip()}/sendMessage"
     results = {"success": [], "failed": []}
 
-    with httpx.Client(timeout=10.0) as client:
+    with httpx.Client(timeout=10.0, trust_env=False) as client:
         for target in targets:
             try:
                 payload = {

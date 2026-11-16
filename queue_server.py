@@ -537,6 +537,20 @@ def trigger_test_broadcast():
     return res
 
 
+@app.get("/api/telegram/bot-info")
+async def get_telegram_bot_info():
+    config = load_config()
+    tg = config.get("telegram", {})
+    bot_token = tg.get("bot_token", "").strip() or "6142133668:AAEQluoCjQTH7ROqK3s9sIKaKsOC9r5rkJM"
+    url = f"https://api.telegram.org/bot{bot_token}/getMe"
+    try:
+        async with httpx.AsyncClient(timeout=10.0, trust_env=False) as client:
+            resp = await client.get(url)
+            return resp.json()
+    except Exception as e:
+        return {"status": "error", "message": str(e)}
+
+
 @app.get("/api/telegram/detect-chat")
 async def detect_telegram_chat():
     config = load_config()
@@ -547,7 +561,7 @@ async def detect_telegram_chat():
 
     url = f"https://api.telegram.org/bot{bot_token}/getUpdates"
     try:
-        async with httpx.AsyncClient(timeout=10.0) as client:
+        async with httpx.AsyncClient(timeout=10.0, trust_env=False) as client:
             resp = await client.get(url)
             data = resp.json()
             if not data.get("ok"):
