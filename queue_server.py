@@ -48,6 +48,26 @@ app = FastAPI(title="Appointment Order Queue & Live Monitor System")
 def healthcheck():
     return {"status": "ok", "service": "cita-previa-system"}
 
+
+@app.get("/api/db/status")
+def get_db_status():
+    from db import is_postgres, get_database_url
+    url = get_database_url()
+    masked_url = ""
+    if url:
+        if "@" in url:
+            prefix, host = url.split("@", 1)
+            scheme = prefix.split("://")[0]
+            masked_url = f"{scheme}://***:***@{host}"
+        else:
+            masked_url = url
+    return {
+        "engine": "PostgreSQL" if is_postgres() else "SQLite",
+        "is_postgres": is_postgres(),
+        "database_url_configured": bool(url),
+        "database": masked_url or "orders.db (Local SQLite)"
+    }
+
 # Global reference to live monitor subprocess if started via dashboard
 MONITOR_PROCESS: Optional[subprocess.Popen] = None
 
@@ -1771,7 +1791,10 @@ def admin_page():
     <body>
         <div class="header">
             <div>
-                <h1>📦 Control Board: Appointments & Broadcaster</h1>
+                <div style="display: flex; align-items: center; gap: 0.6rem; flex-wrap: wrap;">
+                    <h1 style="margin: 0;">📦 Control Board: Appointments & Broadcaster</h1>
+                    <span id="dbStatusBadge" class="badge" style="background: #e0f2fe; color: #0369a1; padding: 0.25rem 0.65rem; font-size: 0.78rem; border-radius: 6px; font-weight: 600;">🗄️ DB...</span>
+                </div>
                 <p style="margin: 0.25rem 0 0; color: #64748b; font-size: 0.85rem;">Manage customer booking queue & live slot broadcast scanners.</p>
             </div>
             <div class="header-actions">
@@ -2622,14 +2645,38 @@ def admin_page():
                 }
             }
 
+            async function loadDbStatus() {
+                try {
+                    const res = await fetch('/api/db/status');
+                    const data = await res.json();
+                    const badge = document.getElementById('dbStatusBadge');
+                    if (badge) {
+                        if (data.is_postgres) {
+                            badge.innerHTML = '🗄️ PostgreSQL Active (Saved & Persistent)';
+                            badge.style.background = '#dcfce7';
+                            badge.style.color = '#15803d';
+                            badge.style.border = '1px solid #86efac';
+                        } else {
+                            badge.innerHTML = '🗄️ Database: SQLite';
+                            badge.style.background = '#f1f5f9';
+                            badge.style.color = '#475569';
+                        }
+                    }
+                } catch(e) {
+                    console.error("Failed to load db status", e);
+                }
+            }
+
             function refreshAll() {
                 loadOrders();
                 loadMonitors();
                 checkDaemonStatus();
+                loadDbStatus();
             }
 
             initAdminDropdowns();
             loadOrders();
+            loadDbStatus();
             setInterval(loadOrders, 5000);
         </script>
     </body>
