@@ -133,17 +133,26 @@ def run_auto_booking(order_id: str, headless: bool = False) -> Dict[str, Any]:
         or os.environ.get("HTTPS_PROXY")
         or os.environ.get("HTTP_PROXY")
     )
-    if not proxy_str:
+    def _is_port_open(port: int) -> bool:
         try:
             import socket
             with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
                 s.settimeout(0.3)
-                if s.connect_ex(('127.0.0.1', 9080)) == 0:
-                    proxy_str = "http://127.0.0.1:9080"
-                elif s.connect_ex(('127.0.0.1', 9050)) == 0:
-                    proxy_str = "socks5://127.0.0.1:9050"
+                return s.connect_ex(('127.0.0.1', port)) == 0
         except Exception:
-            pass
+            return False
+
+    if proxy_str and proxy_str.strip():
+        val = proxy_str.strip()
+        if ("127.0.0.1:9050" in val or "localhost:9050" in val) and _is_port_open(9080):
+            proxy_str = "http://127.0.0.1:9080"
+        else:
+            proxy_str = val
+    else:
+        if _is_port_open(9080):
+            proxy_str = "http://127.0.0.1:9080"
+        elif _is_port_open(9050):
+            proxy_str = "socks5://127.0.0.1:9050"
 
     proxy_config = {"server": proxy_str} if proxy_str else None
 

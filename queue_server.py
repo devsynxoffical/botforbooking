@@ -635,6 +635,7 @@ async def api_send_direct_telegram(payload: Dict[str, Any]):
 def check_tor_service() -> Dict[str, Any]:
     import socket
     socks_open = False
+    http_open = False
     ctrl_open = False
     try:
         with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
@@ -646,15 +647,25 @@ def check_tor_service() -> Dict[str, Any]:
     try:
         with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
             s.settimeout(0.3)
+            http_open = (s.connect_ex(('127.0.0.1', 9080)) == 0)
+    except Exception:
+        pass
+
+    try:
+        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+            s.settimeout(0.3)
             ctrl_open = (s.connect_ex(('127.0.0.1', 9051)) == 0)
     except Exception:
         pass
 
+    effective_proxy = "http://127.0.0.1:9080" if http_open else ("socks5://127.0.0.1:9050" if socks_open else None)
+
     return {
-        "is_active": socks_open,
-        "socks_port": 9050,
+        "is_active": (socks_open or http_open),
+        "socks_port": 9050 if socks_open else None,
+        "http_tunnel_port": 9080 if http_open else None,
         "control_port": 9051 if ctrl_open else None,
-        "proxy_url": "socks5://127.0.0.1:9050" if socks_open else None
+        "proxy_url": effective_proxy
     }
 
 
@@ -682,12 +693,17 @@ def renew_tor_circuit() -> Dict[str, Any]:
 def get_effective_proxy() -> Optional[str]:
     config = load_config()
     p = config.get("proxy") or os.environ.get("PROXY_URL") or os.environ.get("HTTPS_PROXY") or os.environ.get("HTTP_PROXY")
-    if p and p.strip():
-        return p.strip()
-
     tor_info = check_tor_service()
+
+    if p and p.strip():
+        val = p.strip()
+        # Prefer Tor HTTP Tunnel (9080) over SOCKS (9050) when available for max client compatibility
+        if ("127.0.0.1:9050" in val or "localhost:9050" in val) and tor_info.get("http_tunnel_port"):
+            return "http://127.0.0.1:9080"
+        return val
+
     if tor_info["is_active"]:
-        return "socks5://127.0.0.1:9050"
+        return tor_info["proxy_url"]
 
     return None
 
@@ -2284,7 +2300,7 @@ def admin_page():
             }
 
             function setBuiltinTorProxy() {
-                document.getElementById('proxyUrlInput').value = 'socks5://127.0.0.1:9050';
+                document.getElementById('proxyUrlInput').value = 'http://127.0.0.1:9080';
                 saveProxySettings();
             }
 
@@ -2778,7 +2794,13 @@ def admin_page():
             initAdminDropdowns();
             loadOrders();
             loadDbStatus();
+            loadProxySettings();
+            loadTelegramSettings();
+            loadMonitors();
+            checkDaemonStatus();
             setInterval(loadOrders, 5000);
+            setInterval(loadMonitors, 6000);
+            setInterval(checkDaemonStatus, 5000);
         </script>
     </body>
     </html>

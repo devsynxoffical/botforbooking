@@ -25,11 +25,11 @@ else
     echo "⚠️ Tor executable not found, skipping Tor launch."
 fi
 
-# Set default proxy environment variables to local Tor SOCKS5
+# Set default proxy environment variables to local Tor HTTP Tunnel (9080) for highest compatibility
 export PYTHONUNBUFFERED=1
-export PROXY_URL="${PROXY_URL:-socks5://127.0.0.1:9050}"
-export HTTPS_PROXY="${HTTPS_PROXY:-socks5://127.0.0.1:9050}"
-export HTTP_PROXY="${HTTP_PROXY:-socks5://127.0.0.1:9050}"
+export PROXY_URL="${PROXY_URL:-http://127.0.0.1:9080}"
+export HTTPS_PROXY="${HTTPS_PROXY:-http://127.0.0.1:9080}"
+export HTTP_PROXY="${HTTP_PROXY:-http://127.0.0.1:9080}"
 
 # Start Web Queue & Admin API in foreground so Railway binds immediately
 echo "🌐 Launching Application Web Server on port $PORT..."

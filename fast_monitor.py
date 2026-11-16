@@ -170,7 +170,11 @@ def resolve_effective_proxy(proxy_arg: Optional[str] = None) -> Optional[str]:
         or os.environ.get("HTTP_PROXY")
     )
     if p and p.strip():
-        return p.strip()
+        val = p.strip()
+        # Prefer Tor HTTP Tunnel on 9080 over local SOCKS 9050 for maximum compatibility with httpx
+        if ("127.0.0.1:9050" in val or "localhost:9050" in val) and check_port(9080):
+            return "http://127.0.0.1:9080"
+        return val
 
     # 2. Tor HTTP Tunnel on port 9080 (highest compatibility)
     if check_port(9080):
@@ -316,7 +320,7 @@ class FastPortalProber:
                     "elapsed_ms": elapsed_ms
                 }
 
-        except (httpx.ConnectTimeout, httpx.ProxyError):
+        except (httpx.ConnectTimeout, httpx.ReadTimeout, httpx.ProxyError, httpx.ConnectError, httpx.RemoteProtocolError):
             renew_tor_identity()
             return {
                 "has_slots": False,
@@ -337,7 +341,7 @@ async def process_single_monitor(monitor: dict, prober: FastPortalProber, config
 
     res = await prober.fast_check_province(province, procedure)
     ms = res.get("elapsed_ms", 0)
-    print(f"[{datetime.datetime.now().strftime('%H:%M:%S.%f')[:-3]}] ⚡ Checked {province} ({procedure}): {res['status']} ({ms}ms)")
+    print(f"[{datetime.datetime.now().strftime('%H:%M:%S.%f')[:-3]}] ⚡ Checked {province} ({procedure}): {res['status']} ({ms}ms)", flush=True)
 
     has_slots = res["has_slots"]
     status = res["status"]
@@ -370,11 +374,11 @@ async def process_single_monitor(monitor: dict, prober: FastPortalProber, config
                     portal_url=config.get("portal_url", DEFAULT_PORTAL_URL),
                     custom_note=f"⚡ Detección ultrarrápida: {ms}ms desde el servidor"
                 )
-                print(f"      🚨🚨 BROADCASTING TO TELEGRAM ({chat_id}) IMMEDIATELY! 🚨🚨")
+                print(f"      🚨🚨 BROADCASTING TO TELEGRAM ({chat_id}) IMMEDIATELY! 🚨🚨", flush=True)
                 t_alert_start = time.time()
                 broadcast_res = broadcast_telegram_message(bot_token, chat_id, alert_text)
                 t_alert_ms = int((time.time() - t_alert_start) * 1000)
-                print(f"      ✅ Broadcast sent in {t_alert_ms}ms: {broadcast_res['status']}")
+                print(f"      ✅ Broadcast sent in {t_alert_ms}ms: {broadcast_res['status']}", flush=True)
                 alerted = True
 
             # Auto-trigger booking runner for the first waiting client
@@ -394,12 +398,12 @@ async def process_single_monitor(monitor: dict, prober: FastPortalProber, config
                         if queued_client:
                             q_id = queued_client["order_id"]
                             q_name = queued_client["name"]
-                            print(f"      🚀 Auto-Launching Auto-Booker for queued client: {q_name} ({q_id})...")
+                            print(f"      🚀 Auto-Launching Auto-Booker for queued client: {q_name} ({q_id})...", flush=True)
                             python_bin = get_python_bin()
                             booker_script = BASE_DIR / "auto_booker.py"
                             subprocess.Popen([python_bin, str(booker_script), "--order-id", q_id])
                 except Exception as e:
-                    print(f"      [Auto-booking trigger failed]: {e}")
+                    print(f"      [Auto-booking trigger failed]: {e}", flush=True)
 
     update_monitor_status(monitor_id, status, message, alerted=alerted)
 
