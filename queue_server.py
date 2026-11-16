@@ -988,7 +988,7 @@ def trigger_manual_check(monitor_id: int, background_tasks: BackgroundTasks):
 
     # Launch check script in background
     python_bin = get_python_bin()
-    script = BASE_DIR / "monitor.py"
+    script = BASE_DIR / "fast_monitor.py"
 
     def run_check():
         subprocess.run([python_bin, str(script), "--check-once"], check=False)

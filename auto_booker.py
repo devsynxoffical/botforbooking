@@ -141,7 +141,9 @@ def run_auto_booking(order_id: str, headless: bool = False) -> Dict[str, Any]:
             import socket
             with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
                 s.settimeout(0.3)
-                if s.connect_ex(('127.0.0.1', 9050)) == 0:
+                if s.connect_ex(('127.0.0.1', 9080)) == 0:
+                    proxy_str = "http://127.0.0.1:9080"
+                elif s.connect_ex(('127.0.0.1', 9050)) == 0:
                     proxy_str = "socks5://127.0.0.1:9050"
         except Exception:
             pass
