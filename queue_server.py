@@ -267,6 +267,10 @@ def create_order(order: OrderCreate, background_tasks: BackgroundTasks):
             except Exception as e:
                 logger.error(f"Failed to save certificate for {order_id}: {e}")
 
+        cleaned_proc = order.procedure.strip()
+        if "LARGA DURACIÓN" in cleaned_proc.upper() and "TOMA DE HUELLA" in cleaned_proc.upper():
+            cleaned_proc = "POLICIA-TOMA DE HUELLA (EXPEDICIÓN DE TARJETA) INICIAL, RENOVACIÓN, DUPLICADO Y LEY 14/2013"
+
         cur.execute(
             """
             INSERT INTO orders (
@@ -281,7 +285,7 @@ def create_order(order: OrderCreate, background_tasks: BackgroundTasks):
                 order_id, order.name.strip(), order.doc_type.strip(), cleaned_doc,
                 order.citizenship.strip(), order.email.strip(), phone_number,
                 order.province.strip(), order.office.strip() if order.office else "",
-                order.procedure.strip(),
+                cleaned_proc,
                 order.birth_date.strip() if order.birth_date else "",
                 order.birth_country.strip() if order.birth_country else "",
                 order.card_expiry_date.strip() if order.card_expiry_date else "",
@@ -301,7 +305,7 @@ def create_order(order: OrderCreate, background_tasks: BackgroundTasks):
         name=order.name.strip(),
         doc_number=cleaned_doc,
         result_code="WAITING",
-        extra=f"Trámite: {order.procedure} ({order.province})"
+        extra=f"Trámite: {cleaned_proc} ({order.province})"
     )
 
     return {
@@ -1531,7 +1535,7 @@ def intake_page():
                 {
                     group: "👮 TRÁMITES CUERPO NACIONAL DE POLICÍA (CNP)",
                     procedures: [
-                        { value: "POLICIA-TOMA DE HUELLA (EXPEDICIÓN DE TARJETA) Y RENOVACIÓN DE TARJETA DE LARGA DURACIÓN", label: "POLICIA - Toma de huellas (Expedición de tarjeta TIE / Huella)" },
+                        { value: "POLICIA-TOMA DE HUELLA (EXPEDICIÓN DE TARJETA) INICIAL, RENOVACIÓN, DUPLICADO Y LEY 14/2013", label: "POLICIA - Toma de huellas (Expedición de tarjeta TIE / Inicial, Renovación, Duplicado)" },
                         { value: "POLICIA-RECOGIDA DE TARJETA DE IDENTIDAD DE EXTRANJERO (TIE)", label: "POLICIA - Recogida de Tarjeta de Identidad de Extranjero (Lote TIE)" },
                         { value: "POLICIA-ASIGNACIÓN DE N.I.E.", label: "POLICIA - Asignación de N.I.E." },
                         { value: "POLICIA-CERTIFICADOS (DE RESIDENCIA, DE NO RESIDENCIA Y DE CONCORDANCIA)", label: "POLICIA - Certificados (Residencia, No Residencia, Concordancia)" },

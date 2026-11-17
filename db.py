@@ -266,6 +266,21 @@ def init_db():
                             "INSERT INTO monitors (province, procedure, is_active, interval_seconds, created_at) VALUES (?, ?, 1, 60, ?)",
                             (prov, default_proc, now)
                         )
+                # Normalize any legacy procedure text with LARGA DURACIÓN for TOMA DE HUELLA
+                try:
+                    conn.execute("""
+                        UPDATE orders 
+                        SET procedure = 'POLICIA-TOMA DE HUELLA (EXPEDICIÓN DE TARJETA) INICIAL, RENOVACIÓN, DUPLICADO Y LEY 14/2013'
+                        WHERE procedure LIKE '%LARGA DURACIÓN%' AND procedure LIKE '%TOMA DE HUELLA%'
+                    """)
+                    conn.execute("""
+                        UPDATE monitors 
+                        SET procedure = 'POLICIA-TOMA DE HUELLA (EXPEDICIÓN DE TARJETA) INICIAL, RENOVACIÓN, DUPLICADO Y LEY 14/2013'
+                        WHERE procedure LIKE '%LARGA DURACIÓN%' AND procedure LIKE '%TOMA DE HUELLA%'
+                    """)
+                except Exception:
+                    pass
+
                 conn.commit()
             print("✅ PostgreSQL database schema initialized successfully!")
             return
@@ -344,5 +359,20 @@ def init_db():
                     "INSERT INTO monitors (province, procedure, is_active, interval_seconds, created_at) VALUES (?, ?, 1, 60, ?)",
                     (prov, default_proc, now)
                 )
+        # Normalize any legacy procedure text with LARGA DURACIÓN for TOMA DE HUELLA
+        try:
+            conn.execute("""
+                UPDATE orders 
+                SET procedure = 'POLICIA-TOMA DE HUELLA (EXPEDICIÓN DE TARJETA) INICIAL, RENOVACIÓN, DUPLICADO Y LEY 14/2013'
+                WHERE procedure LIKE '%LARGA DURACIÓN%' AND procedure LIKE '%TOMA DE HUELLA%'
+            """)
+            conn.execute("""
+                UPDATE monitors 
+                SET procedure = 'POLICIA-TOMA DE HUELLA (EXPEDICIÓN DE TARJETA) INICIAL, RENOVACIÓN, DUPLICADO Y LEY 14/2013'
+                WHERE procedure LIKE '%LARGA DURACIÓN%' AND procedure LIKE '%TOMA DE HUELLA%'
+            """)
+        except Exception:
+            pass
+
         conn.commit()
     print("✅ SQLite database schema initialized successfully!")
