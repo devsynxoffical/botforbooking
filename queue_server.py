@@ -1238,26 +1238,52 @@ def intake_page():
             </div>
 
             <div class="card">
-                <h1 style="font-size: 1.5rem; margin-bottom: 0.35rem;">📋 New Appointment Request</h1>
-                <p style="color: #64748b; margin-bottom: 1.5rem; font-size: 0.9rem;">Submit applicant information into the queue. Slots are claimed automatically when detected.</p>
+                <h1 style="font-size: 1.5rem; margin-bottom: 0.35rem;">📋 Formulario Oficial de Cita Previa / Appointment Intake</h1>
+                <p style="color: #64748b; margin-bottom: 1.5rem; font-size: 0.9rem;">Sigue exactamente la misma secuencia que el portal oficial de Extranjería y Policía Nacional (Provincia ➔ Oficina ➔ Trámite ➔ Datos del Solicitante).</p>
                 
                 <div id="alertBox" class="alert"></div>
 
                 <form id="orderForm">
+                    <!-- PASO 1: PROVINCIA Y OFICINA (SAME AS SPAIN WEBSITE STEP 1) -->
+                    <div style="background: #eff6ff; border: 1px solid #bfdbfe; border-left: 4px solid #2563eb; border-radius: 8px; padding: 0.85rem 1rem; margin-bottom: 1rem;">
+                        <div style="font-weight: 700; color: #1e40af; font-size: 0.95rem; display: flex; align-items: center; gap: 0.4rem;">
+                            📍 PASO 1: Seleccionar Provincia y Oficina (España)
+                        </div>
+                        <p style="color: #3b82f6; font-size: 0.8rem; margin: 0.2rem 0 0 0;">Al seleccionar la provincia (ej. Barcelona), se cargan automáticamente todas las comisarías y oficinas oficiales disponibles.</p>
+                    </div>
+
                     <div class="grid-2">
                         <div>
-                            <label>Nombre y Apellidos / Full Name *</label>
-                            <input type="text" id="name" required placeholder="Nombre completo como en NIE/Pasaporte">
+                            <label>1. Provincia / Province *</label>
+                            <select id="provinceSelect" required onchange="onProvinceChanged(this.value)">
+                            </select>
+                            <input type="text" id="customProvinceInput" placeholder="✍️ Especificar provincia..." style="margin-top: 0.4rem; display: none;">
                         </div>
                         <div>
-                            <label>País de nacionalidad / Country of Nationality *</label>
-                            <select id="citizenshipSelect" required onchange="onCitizenshipChanged(this.value)">
+                            <label>2. Oficina / Comisaría (Police Station) *</label>
+                            <select id="officeSelect" onchange="onOfficeChanged(this.value)">
                             </select>
-                            <input type="text" id="customCitizenshipInput" placeholder="✍️ Especificar nacionalidad..." style="margin-top: 0.4rem; display: none;">
+                            <input type="text" id="customOfficeInput" placeholder="✍️ Especificar comisaría..." style="margin-top: 0.4rem; display: none;">
                         </div>
                     </div>
 
-                    <div class="grid-2" style="margin-top: 1rem;">
+                    <!-- PASO 2: TRÁMITE / PROCEDURE (SAME AS SPAIN WEBSITE STEP 2) -->
+                    <div style="margin-top: 1.25rem;">
+                        <label>3. Trámite a realizar / Procedure *</label>
+                        <select id="procedureSelect" required onchange="onProcChanged(this.value)">
+                        </select>
+                        <input type="text" id="customProcInput" placeholder="✍️ Especificar trámite personalizado..." style="margin-top: 0.4rem; display: none;">
+                    </div>
+
+                    <!-- PASO 3: DATOS DEL SOLICITANTE (SAME AS SPAIN WEBSITE STEP 3) -->
+                    <div style="background: #f0fdf4; border: 1px solid #bbf7d0; border-left: 4px solid #16a34a; border-radius: 8px; padding: 0.85rem 1rem; margin-top: 1.5rem; margin-bottom: 1rem;">
+                        <div style="font-weight: 700; color: #166534; font-size: 0.95rem; display: flex; align-items: center; gap: 0.4rem;">
+                            👤 PASO 2: Datos del Solicitante (Como en Sede Electrónica)
+                        </div>
+                        <p style="color: #15803d; font-size: 0.8rem; margin: 0.2rem 0 0 0;">Datos oficiales de identidad requeridos por la Policía Nacional para expedir la cita.</p>
+                    </div>
+
+                    <div class="grid-2">
                         <div>
                             <label>Tipo de documento / Document Type *</label>
                             <select id="doc_type" required>
@@ -1274,9 +1300,22 @@ def intake_page():
 
                     <div class="grid-2" style="margin-top: 1rem;">
                         <div>
+                            <label>Nombre y Apellidos / Full Name *</label>
+                            <input type="text" id="name" required placeholder="Nombre completo como en NIE/Pasaporte">
+                        </div>
+                        <div>
                             <label>Año de nacimiento / Year of Birth *</label>
                             <input type="number" id="dob_year" min="1920" max="2026" required placeholder="Ej: 1996 o 1989">
                             <small style="color: #64748b; font-size: 0.78rem;">Sólo año requerido por el portal oficial</small>
+                        </div>
+                    </div>
+
+                    <div class="grid-2" style="margin-top: 1rem;">
+                        <div>
+                            <label>País de nacionalidad / Country of Nationality *</label>
+                            <select id="citizenshipSelect" required onchange="onCitizenshipChanged(this.value)">
+                            </select>
+                            <input type="text" id="customCitizenshipInput" placeholder="✍️ Especificar nacionalidad..." style="margin-top: 0.4rem; display: none;">
                         </div>
                         <div>
                             <label>País de nacimiento / Country of Birth *</label>
@@ -1286,7 +1325,15 @@ def intake_page():
                         </div>
                     </div>
 
-                    <div class="grid-2" style="margin-top: 1rem;">
+                    <!-- PASO 4: DATOS DE CONTACTO (SAME AS SPAIN WEBSITE STEP 4) -->
+                    <div style="background: #fff7ed; border: 1px solid #fed7aa; border-left: 4px solid #ea580c; border-radius: 8px; padding: 0.85rem 1rem; margin-top: 1.5rem; margin-bottom: 1rem;">
+                        <div style="font-weight: 700; color: #9a3412; font-size: 0.95rem; display: flex; align-items: center; gap: 0.4rem;">
+                            📱 PASO 3: Datos de Contacto y Verificación
+                        </div>
+                        <p style="color: #c2410c; font-size: 0.8rem; margin: 0.2rem 0 0 0;">Donde la Policía enviará el SMS de verificación OTP y el PDF con el justificante oficial.</p>
+                    </div>
+
+                    <div class="grid-2">
                         <div>
                             <label>Teléfono móvil español / Spanish Mobile *</label>
                             <input type="tel" id="phone" required placeholder="Ej: 607 123 456">
@@ -1299,30 +1346,15 @@ def intake_page():
                         </div>
                     </div>
 
-                    <div class="grid-2" style="margin-top: 1rem;">
-                        <div>
-                            <label>Provincia / Province *</label>
-                            <select id="provinceSelect" required onchange="onProvinceChanged(this.value)">
-                            </select>
-                            <input type="text" id="customProvinceInput" placeholder="✍️ Especificar provincia..." style="margin-top: 0.4rem; display: none;">
+                    <!-- PASO 5: OPCIONES AVANZADAS DE AGENCIA -->
+                    <div style="background: #faf5ff; border: 1px solid #e9d5ff; border-left: 4px solid #9333ea; border-radius: 8px; padding: 0.85rem 1rem; margin-top: 1.5rem; margin-bottom: 1rem;">
+                        <div style="font-weight: 700; color: #6b21a8; font-size: 0.95rem; display: flex; align-items: center; gap: 0.4rem;">
+                            ⚙️ PASO 4: Opciones de Gestión y Automatización
                         </div>
-                        <div>
-                            <label>Oficina / Comisaría (Police Station)</label>
-                            <select id="officeSelect" onchange="onOfficeChanged(this.value)">
-                            </select>
-                            <input type="text" id="customOfficeInput" placeholder="✍️ Especificar comisaría..." style="margin-top: 0.4rem; display: none;">
-                        </div>
+                        <p style="color: #7e22ce; font-size: 0.8rem; margin: 0.2rem 0 0 0;">Personalice fecha máxima, color identificativo y certificado digital (soporte directo para iPhone).</p>
                     </div>
 
-                    <div style="margin-top: 1rem;">
-                        <label>Trámite / Procedure *</label>
-                        <select id="procedureSelect" required onchange="onProcChanged(this.value)">
-                        </select>
-                        <input type="text" id="customProcInput" placeholder="✍️ Especificar trámite personalizado..." style="margin-top: 0.4rem; display: none;">
-                    </div>
-
-                    <!-- BOOKING COLOR & MAX DATE -->
-                    <div class="grid-2" style="margin-top: 1.25rem; background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 10px; padding: 1rem;">
+                    <div class="grid-2" style="background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 10px; padding: 1rem;">
                         <div>
                             <label style="display: flex; align-items: center; justify-content: space-between;">
                                 <span>🎨 Color identificativo / Booking Color</span>
@@ -1393,34 +1425,39 @@ def intake_page():
                 "Girona", "Almería", "Guipúzcoa", "Toledo", "Badajoz", "Navarra", "Jaén", "Castellón", "Cantabria", "Huelva", 
                 "Valladolid", "Ciudad Real", "León", "Lleida", "Cáceres", "Albacete", "Burgos", "Álava", "Salamanca", "Lugo", 
                 "La Rioja", "Ourense", "Guadalajara", "Huesca", "Cuenca", "Zamora", "Palencia", "Ávila", "Segovia", "Teruel", 
-                "Soria", "Ceuta", "Melilla"
+                "Soria", "Ceuta", "Melilla", "A Coruña", "Asturias"
             ];
 
             const PROVINCE_OFFICES = {
                 "Barcelona": [
-                    { value: "", label: "🌐 Cualquier oficina (Any / First Available)" },
+                    { value: "", label: "🌐 Cualquier oficina (Any / First Available in Barcelona)" },
                     { value: "Barcelona - Todas las oficinas", label: "🏢 Barcelona - Todas las oficinas (All Barcelona Offices)" },
-                    { value: "CNP BARCELONA - RAMBLA GUIPÚZCOA 74", label: "CNP Barcelona - Rambla de Guipúzcoa, 74" },
-                    { value: "CNP BARCELONA - MALLORCA 213", label: "CNP Barcelona - Mallorca, 213" },
-                    { value: "CNP BARCELONA - GUADALAJARA 1 (GRÀCIA)", label: "CNP Barcelona - Guadalajara, 1 (Gràcia)" },
-                    { value: "CNP HOSPITALET - MONTSENY 137", label: "CNP L'Hospitalet de Llobregat - Montseny, 137" },
+                    { value: "CNP BCN MALLORCA - C/ MALLORCA 213", label: "CNP Barcelona - C/ Mallorca, 213 (Eixample)" },
+                    { value: "CNP BCN GUIPÚZCOA - RAMBLA GUIPÚZCOA 74", label: "CNP Barcelona - Rambla de Guipúzcoa, 74 (Sant Martí)" },
+                    { value: "CNP BCN GUADALAJARA - C/ GUADALAJARA 1", label: "CNP Barcelona - C/ Guadalajara, 1 (Gràcia)" },
+                    { value: "CNP HOSPITALET DE LLOBREGAT - C/ MONTSENY 137", label: "CNP L'Hospitalet de Llobregat - C/ Montseny, 137" },
                     { value: "CNP BADALONA - AVDA. DELS VENTS 9-11", label: "CNP Badalona - Avda. dels Vents, 9-11" },
-                    { value: "CNP CORNELLÀ DE LLOBREGAT - AV. SANT ILDEFONS", label: "CNP Cornellà de Llobregat - Av. Sant Ildefons" },
-                    { value: "CNP MATARÓ - C/ DELS JORDI 1", label: "CNP Mataró - Carrer dels Jordi, 1" },
-                    { value: "CNP SABADELL - C/ BATLLORI 37", label: "CNP Sabadell - Carrer Batllori, 37" },
-                    { value: "CNP TERRASSA - C/ BALMES 2", label: "CNP Terrassa - Carrer Balmes, 2" },
-                    { value: "CNP SANT FELIU DE LLOBREGAT - C/ CARLES BUÏGAS", label: "CNP Sant Feliu de Llobregat - C/ Carles Buïgas" },
-                    { value: "CNP SANTA COLOMA DE GRAMENET - C/ IRLANDA", label: "CNP Santa Coloma de Gramenet - C/ Irlanda" },
-                    { value: "CNP GRANOLLERS - C/ JOSEP UMBERT", label: "CNP Granollers - C/ Josep Umbert, 126" },
-                    { value: "CNP VIC - BISBE MORGADES 4", label: "CNP Vic - Bisbe Morgades, 4" },
+                    { value: "CNP CORNELLÀ DE LLOBREGAT - AV. SANT ILDEFONS", label: "CNP Cornellà de Llobregat - Av. Sant Ildefons s/n" },
+                    { value: "CNP SANTA COLOMA DE GRAMENET - C/ IRLANDA 67", label: "CNP Santa Coloma de Gramenet - C/ Irlanda, 67" },
+                    { value: "CNP SANT FELIU DE LLOBREGAT - C/ CARLES BUÏGAS 2", label: "CNP Sant Feliu de Llobregat - C/ Carles Buïgas, 2" },
+                    { value: "CNP SANT BOI DE LLOBREGAT - MOSSÈN JACINT VERDAGUER", label: "CNP Sant Boi de Llobregat - Mossèn Jacint Verdaguer" },
+                    { value: "CNP EL PRAT DE LLOBREGAT - AEROPORT", label: "CNP El Prat de Llobregat - Aeroport (Centre Càrrega Aèria)" },
+                    { value: "CNP MATARÓ - C/ DELS JORDI 1", label: "CNP Mataró - C/ dels Jordi, 1" },
+                    { value: "CNP SABADELL - C/ BATLLORI 37", label: "CNP Sabadell - C/ Batllori, 37" },
+                    { value: "CNP TERRASSA - C/ BALMES 2", label: "CNP Terrassa - C/ Balmes, 2" },
+                    { value: "CNP SANT CUGAT DEL VALLÈS - C/ VALLÈS 1", label: "CNP Sant Cugat del Vallès - C/ Vallès, 1" },
+                    { value: "CNP RUBÍ - C/ CORREOS 20", label: "CNP Rubí - C/ Correos, 20" },
+                    { value: "CNP RIPOLLET - C/ TAMARIT 78", label: "CNP Ripollet - C/ Tamarit, 78" },
+                    { value: "CNP GRANOLLERS - C/ JOSEP UMBERT 126", label: "CNP Granollers - C/ Josep Umbert, 126" },
+                    { value: "CNP VIC - C/ BISBE MORGADES 4", label: "CNP Vic - C/ Bisbe Morgades, 4" },
                     { value: "CNP MANRESA - C/ SOLANA 34", label: "CNP Manresa - C/ Solana, 34" },
-                    { value: "CNP SANT BOI DE LLOBREGAT", label: "CNP Sant Boi de Llobregat - Mossèn Jacint Verdaguer" },
-                    { value: "CNP CASTELLDEFELS", label: "CNP Castelldefels - Plaça Esperança" },
-                    { value: "CNP IGUALADA", label: "CNP Igualada - C/ Prat de la Riba" },
-                    { value: "CNP VILANOVA I LA GELTRÚ", label: "CNP Vilanova i la Geltrú - C/ Vapor" }
+                    { value: "CNP IGUALADA - C/ PRAT DE LA RIBA 13", label: "CNP Igualada - C/ Prat de la Riba, 13" },
+                    { value: "CNP VILAFRANCA DEL PENEDÈS", label: "CNP Vilafranca del Penedès - C/ Bisbe Morgades" },
+                    { value: "CNP VILANOVA I LA GELTRÚ - C/ VAPOR 19", label: "CNP Vilanova i la Geltrú - C/ Vapor, 19" },
+                    { value: "CNP CASTELLDEFELS - PLAÇA ESPERANÇA", label: "CNP Castelldefels - Plaça Esperança" }
                 ],
                 "Madrid": [
-                    { value: "", label: "🌐 Cualquier oficina (Any / First Available)" },
+                    { value: "", label: "🌐 Cualquier oficina (Any / First Available in Madrid)" },
                     { value: "Madrid - Todas las oficinas", label: "🏢 Madrid - Todas las oficinas (All Madrid Offices)" },
                     { value: "CNP MADRID - AVDA. DE LOS POBLADOS S/N (ALUCHE)", label: "CNP Madrid - Avda. de los Poblados s/n (Aluche)" },
                     { value: "CNP MADRID - PADRE PIQUER 18", label: "CNP Madrid - Padre Piquer, 18" },
@@ -1440,7 +1477,7 @@ def intake_page():
                     { value: "CNP TORREJÓN DE ARDOZ", label: "CNP Torrejón de Ardoz - C/ Hilados" }
                 ],
                 "Valencia": [
-                    { value: "", label: "🌐 Cualquier oficina (Any / First Available)" },
+                    { value: "", label: "🌐 Cualquier oficina (Any / First Available in Valencia)" },
                     { value: "Valencia - Todas las oficinas", label: "🏢 Valencia - Todas las oficinas (All Valencia Offices)" },
                     { value: "CNP VALENCIA - GRAN VÍA RAMÓN Y CAJAL 40", label: "CNP Valencia - Gran Vía Ramón y Cajal, 40" },
                     { value: "CNP VALENCIA - ZAPADORES (BOMBER RAMÓN DUART)", label: "CNP Valencia - Zapadores (C/ Bomber Ramón Duart)" },
@@ -1455,7 +1492,7 @@ def intake_page():
                     { value: "CNP TORRENT", label: "CNP Torrent - C/ Santa Elena" }
                 ],
                 "Alicante": [
-                    { value: "", label: "🌐 Cualquier oficina (Any / First Available)" },
+                    { value: "", label: "🌐 Cualquier oficina (Any / First Available in Alicante)" },
                     { value: "Alicante - Todas las oficinas", label: "🏢 Alicante - Todas las oficinas (All Alicante Offices)" },
                     { value: "CNP ALICANTE - CAMPO DE MIRRA 6", label: "CNP Alicante - C/ Campo de Mirra, 6" },
                     { value: "CNP ALICANTE - ISABEL LA CATÓLICA 25", label: "CNP Alicante - C/ Isabel la Católica, 25" },
@@ -1468,7 +1505,7 @@ def intake_page():
                     { value: "CNP ELDA - C/ LUIS GALIANO", label: "CNP Elda - C/ Luis Galiano" }
                 ],
                 "Málaga": [
-                    { value: "", label: "🌐 Cualquier oficina (Any / First Available)" },
+                    { value: "", label: "🌐 Cualquier oficina (Any / First Available in Málaga)" },
                     { value: "Málaga - Todas las oficinas", label: "🏢 Málaga - Todas las oficinas (All Málaga Offices)" },
                     { value: "CNP MÁLAGA - MAURICIO MORO PARETO 13", label: "CNP Málaga - Mauricio Moro Pareto, 13" },
                     { value: "CNP MÁLAGA - PLAZA MANUEL AZAÑA 3", label: "CNP Málaga - Plaza Manuel Azaña, 3" },
@@ -1480,7 +1517,7 @@ def intake_page():
                     { value: "CNP RONDA", label: "CNP Ronda - C/ Lorenza Correa" }
                 ],
                 "Sevilla": [
-                    { value: "", label: "🌐 Cualquier oficina (Any / First Available)" },
+                    { value: "", label: "🌐 Cualquier oficina (Any / First Available in Sevilla)" },
                     { value: "Sevilla - Todas las oficinas", label: "🏢 Sevilla - Todas las oficinas (All Sevilla Offices)" },
                     { value: "CNP SEVILLA - PLAZA DE ESPAÑA (TORRE NORTE)", label: "CNP Sevilla - Plaza de España (Torre Norte)" },
                     { value: "CNP SEVILLA - TABLADA (AV. DE LA MAESTRANZA)", label: "CNP Sevilla - Tablada (Av. de la Maestranza)" },
@@ -1489,7 +1526,7 @@ def intake_page():
                     { value: "CNP ÉCIJA", label: "CNP Écija - C/ Castellar" }
                 ],
                 "Murcia": [
-                    { value: "", label: "🌐 Cualquier oficina (Any / First Available)" },
+                    { value: "", label: "🌐 Cualquier oficina (Any / First Available in Murcia)" },
                     { value: "Murcia - Todas las oficinas", label: "🏢 Murcia - Todas las oficinas" },
                     { value: "CNP MURCIA - C/ ISABEL LA CATÓLICA 25", label: "CNP Murcia - C/ Isabel la Católica, 25" },
                     { value: "CNP CARTAGENA - C/ MENÉNDEZ PELAYO", label: "CNP Cartagena - C/ Menéndez Pelayo" },
@@ -1497,7 +1534,7 @@ def intake_page():
                     { value: "CNP MOLINA DE SEGURA", label: "CNP Molina de Segura" }
                 ],
                 "Baleares": [
-                    { value: "", label: "🌐 Cualquier oficina (Any / First Available)" },
+                    { value: "", label: "🌐 Cualquier oficina (Any / First Available in Baleares)" },
                     { value: "Baleares - Todas las oficinas", label: "🏢 Baleares - Todas las oficinas" },
                     { value: "CNP PALMA DE MALLORCA - SIMÓ BALLESTER", label: "CNP Palma de Mallorca - C/ Simó Ballester, 8" },
                     { value: "CNP PALMA - C/ FELICIÀ FUSTER", label: "CNP Palma - C/ Felicià Fuster" },
@@ -1506,28 +1543,135 @@ def intake_page():
                     { value: "CNP MAÓ (MENORCA)", label: "CNP Maó - Menorca" },
                     { value: "CNP CIUTADELLA", label: "CNP Ciutadella - Menorca" }
                 ],
+                "Las Palmas": [
+                    { value: "", label: "🌐 Cualquier oficina (Any / First Available in Las Palmas)" },
+                    { value: "Las Palmas - Todas las oficinas", label: "🏢 Las Palmas - Todas las oficinas" },
+                    { value: "CNP LAS PALMAS - C/ LUIS DORESTE SILVA 68", label: "CNP Las Palmas - C/ Luis Doreste Silva, 68" },
+                    { value: "CNP TELDE - C/ BÁRBARA DE BRAGANZA", label: "CNP Telde - C/ Bárbara de Braganza" },
+                    { value: "CNP MASPALOMAS (SAN BARTOLOMÉ)", label: "CNP Maspalomas (San Bartolomé de Tirajana)" },
+                    { value: "CNP ARRECIFE (LANZAROTE)", label: "CNP Arrecife (Lanzarote) - C/ Blas Cabrera" },
+                    { value: "CNP PUERTO DEL ROSARIO (FUERTEVENTURA)", label: "CNP Puerto del Rosario (Fuerteventura)" }
+                ],
+                "Santa Cruz de Tenerife": [
+                    { value: "", label: "🌐 Cualquier oficina (Any / First Available in Tenerife)" },
+                    { value: "Santa Cruz de Tenerife - Todas las oficinas", label: "🏢 Tenerife - Todas las oficinas" },
+                    { value: "CNP SANTA CRUZ DE TENERIFE - C/ ROBLAYO 4", label: "CNP Santa Cruz de Tenerife - C/ Roblayo, 4" },
+                    { value: "CNP LA LAGUNA - C/ MADRE MARÍA ROSA", label: "CNP La Laguna - C/ Madre María Rosa" },
+                    { value: "CNP PUERTO DE LA CRUZ", label: "CNP Puerto de la Cruz - Avda. José María del Campo" },
+                    { value: "CNP PLAYA DE LAS AMÉRICAS (ADEJE/ARONA)", label: "CNP Playa de las Américas (Adeje / Arona)" },
+                    { value: "CNP SANTA CRUZ DE LA PALMA", label: "CNP Santa Cruz de La Palma" }
+                ],
                 "Zaragoza": [
-                    { value: "", label: "🌐 Cualquier oficina (Any / First Available)" },
+                    { value: "", label: "🌐 Cualquier oficina (Any / First Available in Zaragoza)" },
                     { value: "Zaragoza - Todas las oficinas", label: "🏢 Zaragoza - Todas las oficinas" },
                     { value: "CNP ZARAGOZA - COMISARÍA DELICIAS", label: "CNP Zaragoza - Delicias (Av. de Valencia)" },
                     { value: "CNP ZARAGOZA - COMISARÍA ACTUR", label: "CNP Zaragoza - Actur (C/ Gertrudis Gómez)" },
                     { value: "CNP ZARAGOZA - SAN JOSÉ", label: "CNP Zaragoza - San José (Paseo del Canal)" },
                     { value: "CNP CALATAYUD", label: "CNP Calatayud" }
                 ],
+                "Cádiz": [
+                    { value: "", label: "🌐 Cualquier oficina (Any / First Available in Cádiz)" },
+                    { value: "Cádiz - Todas las oficinas", label: "🏢 Cádiz - Todas las oficinas" },
+                    { value: "CNP CÁDIZ - AVDA. DE ANDALUCÍA 28", label: "CNP Cádiz - Avda. de Andalucía, 28" },
+                    { value: "CNP JEREZ DE LA FRONTERA", label: "CNP Jerez de la Frontera - Plaza de la Estación" },
+                    { value: "CNP ALGECIRAS - AVDA. FUERZAS ARMADAS", label: "CNP Algeciras - Avda. Fuerzas Armadas, 6" },
+                    { value: "CNP LA LÍNEA DE LA CONCEPCIÓN", label: "CNP La Línea de la Concepción" },
+                    { value: "CNP EL PUERTO DE SANTA MARÍA", label: "CNP El Puerto de Santa María" },
+                    { value: "CNP SAN FERNANDO", label: "CNP San Fernando" }
+                ],
+                "Bizkaia": [
+                    { value: "", label: "🌐 Cualquier oficina (Any / First Available in Bizkaia)" },
+                    { value: "Bizkaia - Todas las oficinas", label: "🏢 Bizkaia - Todas las oficinas" },
+                    { value: "CNP BILBAO - C/ GORDÓNIZ 8", label: "CNP Bilbao - C/ Gordóniz, 8" },
+                    { value: "CNP BILBAO - VIRGEN DE BEGOÑA 32", label: "CNP Bilbao - C/ Virgen de Begoña, 32" },
+                    { value: "CNP BARAKALDO - C/ BIDEZABAL", label: "CNP Barakaldo - C/ Bidezabal" },
+                    { value: "CNP BASAURI - C/ KAREAGA", label: "CNP Basauri - C/ Kareaga" },
+                    { value: "CNP GETXO - C/ EUSKAL HERRIA", label: "CNP Getxo - C/ Euskal Herria" },
+                    { value: "CNP PORTUGALETE", label: "CNP Portugalete" }
+                ],
+                "Granada": [
+                    { value: "", label: "🌐 Cualquier oficina (Any / First Available in Granada)" },
+                    { value: "Granada - Todas las oficinas", label: "🏢 Granada - Todas las oficinas" },
+                    { value: "CNP GRANADA - C/ SAN AGAPITO 2", label: "CNP Granada - C/ San Agapito, 2" },
+                    { value: "CNP GRANADA - PLAZA DE LOS CAMPOS", label: "CNP Granada - Plaza de los Campos, 3" },
+                    { value: "CNP MOTRIL - C/ AGUACATE", label: "CNP Motril - C/ Aguacate" },
+                    { value: "CNP BAZA", label: "CNP Baza" }
+                ],
+                "Córdoba": [
+                    { value: "", label: "🌐 Cualquier oficina (Any / First Available in Córdoba)" },
+                    { value: "Córdoba - Todas las oficinas", label: "🏢 Córdoba - Todas las oficinas" },
+                    { value: "CNP CÓRDOBA - PARQUE FIGUEROA", label: "CNP Córdoba - Parque Figueroa" },
+                    { value: "CNP CÓRDOBA - DOCTOR FLEMING", label: "CNP Córdoba - Avda. Doctor Fleming, 2" },
+                    { value: "CNP LUCENA - C/ HUERTAS", label: "CNP Lucena - C/ Huertas" }
+                ],
                 "Tarragona": [
-                    { value: "", label: "🌐 Cualquier oficina (Any / First Available)" },
+                    { value: "", label: "🌐 Cualquier oficina (Any / First Available in Tarragona)" },
                     { value: "Tarragona - Todas las oficinas", label: "🏢 Tarragona - Todas las oficinas" },
                     { value: "CNP TARRAGONA - PLAÇA D'ERNEST LLUCH", label: "CNP Tarragona - Plaça d'Ernest Lluch, 4" },
                     { value: "CNP REUS", label: "CNP Reus - C/ Gaudí" },
                     { value: "CNP TORTOSA", label: "CNP Tortosa - Plaça de la Pau" }
                 ],
                 "Girona": [
-                    { value: "", label: "🌐 Cualquier oficina (Any / First Available)" },
+                    { value: "", label: "🌐 Cualquier oficina (Any / First Available in Girona)" },
                     { value: "Girona - Todas las oficinas", label: "🏢 Girona - Todas las oficinas" },
                     { value: "CNP GIRONA - AV. JAUME I", label: "CNP Girona - Av. Jaume I, 84" },
                     { value: "CNP FIGUERES", label: "CNP Figueres - C/ Pep Ventura" },
                     { value: "CNP LLORET DE MAR", label: "CNP Lloret de Mar" },
                     { value: "CNP SANT FELIU DE GUÍXOLS", label: "CNP Sant Feliu de Guíxols" }
+                ],
+                "Almería": [
+                    { value: "", label: "🌐 Cualquier oficina (Any / First Available in Almería)" },
+                    { value: "Almería - Todas las oficinas", label: "🏢 Almería - Todas las oficinas" },
+                    { value: "CNP ALMERÍA - C/ MARRUECOS 1", label: "CNP Almería - C/ Marruecos, 1" },
+                    { value: "CNP EL EJIDO - AVDA. DE MADRID", label: "CNP El Ejido - Avda. de Madrid" },
+                    { value: "CNP ROQUETAS DE MAR", label: "CNP Roquetas de Mar" }
+                ],
+                "Guipúzcoa": [
+                    { value: "", label: "🌐 Cualquier oficina (Any / First Available in Guipúzcoa)" },
+                    { value: "Guipúzcoa - Todas las oficinas", label: "🏢 Guipúzcoa - Todas las oficinas" },
+                    { value: "CNP SAN SEBASTIÁN - URUMEA 17", label: "CNP San Sebastián - Paseo del Urumea, 17" },
+                    { value: "CNP IRÚN - PLAZA DEL ENSANCHE", label: "CNP Irún - Plaza del Ensanche, 1" },
+                    { value: "CNP ÉIBAR", label: "CNP Éibar" }
+                ],
+                "Toledo": [
+                    { value: "", label: "🌐 Cualquier oficina (Any / First Available in Toledo)" },
+                    { value: "Toledo - Todas las oficinas", label: "🏢 Toledo - Todas las oficinas" },
+                    { value: "CNP TOLEDO - AVDA. DE PORTUGAL", label: "CNP Toledo - Avda. de Portugal" },
+                    { value: "CNP TALAVERA DE LA REINA", label: "CNP Talavera de la Reina - C/ Carlos Barroso" }
+                ],
+                "Navarra": [
+                    { value: "", label: "🌐 Cualquier oficina (Any / First Available in Navarra)" },
+                    { value: "Navarra - Todas las oficinas", label: "🏢 Navarra - Todas las oficinas" },
+                    { value: "CNP PAMPLONA - C/ CHINCHILLA 3", label: "CNP Pamplona - C/ General Chinchilla, 3" },
+                    { value: "CNP TUDELA", label: "CNP Tudela" }
+                ],
+                "Castellón": [
+                    { value: "", label: "🌐 Cualquier oficina (Any / First Available in Castellón)" },
+                    { value: "Castellón - Todas las oficinas", label: "🏢 Castellón - Todas las oficinas" },
+                    { value: "CNP CASTELLÓN - C/ RÍO SELLA 5", label: "CNP Castellón - C/ Río Sella, 5" },
+                    { value: "CNP VILA-REAL", label: "CNP Vila-real" }
+                ],
+                "Pontevedra": [
+                    { value: "", label: "🌐 Cualquier oficina (Any / First Available in Pontevedra)" },
+                    { value: "Pontevedra - Todas las oficinas", label: "🏢 Pontevedra - Todas las oficinas" },
+                    { value: "CNP VIGO - C/ LUIS TABOADA 8", label: "CNP Vigo - C/ Luis Taboada, 8" },
+                    { value: "CNP PONTEVEDRA - C/ JOAQUÍN COSTA", label: "CNP Pontevedra - C/ Joaquín Costa, 17" },
+                    { value: "CNP MARÍN", label: "CNP Marín" },
+                    { value: "CNP VILAGARCÍA DE AROUSA", label: "CNP Vilagarcía de Arousa" }
+                ],
+                "A Coruña": [
+                    { value: "", label: "🌐 Cualquier oficina (Any / First Available in A Coruña)" },
+                    { value: "A Coruña - Todas las oficinas", label: "🏢 A Coruña - Todas las oficinas" },
+                    { value: "CNP A CORUÑA - C/ MÉDICO DEVESA 4", label: "CNP A Coruña - C/ Médico Devesa, 4" },
+                    { value: "CNP SANTIAGO DE COMPOSTELA", label: "CNP Santiago de Compostela - C/ Rodrigo de Padrón" },
+                    { value: "CNP FERROL - C/ SAN AMARO", label: "CNP Ferrol - C/ San Amaro" }
+                ],
+                "Asturias": [
+                    { value: "", label: "🌐 Cualquier oficina (Any / First Available in Asturias)" },
+                    { value: "Asturias - Todas las oficinas", label: "🏢 Asturias - Todas las oficinas" },
+                    { value: "CNP OVIEDO - C/ PLACIDO ARANGO", label: "CNP Oviedo - C/ Placido Arango" },
+                    { value: "CNP GIJÓN - PLAZA DE LA HABANA", label: "CNP Gijón - Plaza de la Habana" },
+                    { value: "CNP AVILÉS", label: "CNP Avilés" }
                 ]
             };
 
@@ -1561,23 +1705,30 @@ def intake_page():
             ];
 
             const COUNTRIES_LIST = [
-                "BANGLADESH", "PAKISTAN", "MARRUECOS", "COLOMBIA", "VENEZUELA", "HONDURAS", 
-                "PERU", "ARGENTINA", "ECUADOR", "BRASIL", "REPUBLICA DOMINICANA", "PARAGUAY", 
-                "BOLIVIA", "CHINA", "INDIA", "SENEGAL", "ARGELIA", "UCRANIA", "RUSIA", 
-                "FILIPINAS", "REINO UNIDO", "AFGANISTAN", "ALBANIA", "ALEMANIA", "ANDORRA", 
-                "ANGOLA", "ARMENIA", "AUSTRALIA", "AUSTRIA", "AZERBAIYAN", "BELGICA", 
-                "BELICE", "BENIN", "BIELORRUSIA", "BOSNIA Y HERZEGOVINA", "BULGARIA", 
-                "BURKINA FASO", "CABO VERDE", "CAMBOYA", "CAMERUN", "CANADA", "CHILE", 
-                "CONGO", "COREA DEL SUR", "COSTA DE MARFIL", "COSTA RICA", "CROACIA", 
-                "CUBA", "DINAMARCA", "EGIPTO", "EL SALVADOR", "EMIRATOS ARABES UNIDOS", 
-                "ESLOVAQUIA", "ESLOVENIA", "ESPAÑA", "ESTADOS UNIDOS", "ETIOPIA", "FINLANDIA", 
-                "FRANCIA", "GAMBIA", "GEORGIA", "GHANA", "GRECIA", "GUATEMALA", "GUINEA", 
-                "GUINEA ECUATORIAL", "HAITI", "HUNGRIA", "INDONESIA", "IRAN", "IRAQ", 
-                "IRLANDA", "ISRAEL", "ITALIA", "JAMAICA", "JAPON", "JORDANIA", "KAZAJISTAN", 
-                "KENIA", "LIBANO", "LITUANIA", "MALI", "MAURITANIA", "MEXICO", "MOLDAVIA", 
-                "NEPAL", "NICARAGUA", "NIGERIA", "NORUEGA", "PAISES BAJOS", "PANAMA", 
-                "POLONIA", "PORTUGAL", "RUMANIA", "SIRIA", "SRI LANKA", "SUECIA", 
-                "SUIZA", "TAILANDIA", "TUNEZ", "TURQUIA", "URUGUAY", "VIETNAM"
+                "AFGANISTAN", "ALBANIA", "ALEMANIA", "ANDORRA", "ANGOLA", "ANTIGUA Y BARBUDA", "ARABIA SAUDITA", "ARGELIA", "ARGENTINA", 
+                "ARMENIA", "AUSTRALIA", "AUSTRIA", "AZERBAIYAN", "BAHAMAS", "BANGLADESH", "BARBADOS", "BAREIN", "BELGICA", 
+                "BELICE", "BENIN", "BIELORRUSIA", "BOLIVIA", "BOSNIA Y HERZEGOVINA", "BOTSUANA", "BRASIL", "BRUNEI", "BULGARIA", 
+                "BURKINA FASO", "BURUNDI", "BUTAN", "CABO VERDE", "CAMBOYA", "CAMERUN", "CANADA", "CATAR", "CHAD", "CHILE", 
+                "CHINA", "CHIPRE", "COLOMBIA", "COMORAS", "CONGO", "COREA DEL NORTE", "COREA DEL SUR", "COSTA DE MARFIL", 
+                "COSTA RICA", "CROACIA", "CUBA", "DINAMARCA", "DOMINICA", "ECUADOR", "EGIPTO", "EL SALVADOR", 
+                "EMIRATOS ARABES UNIDOS", "ERITREA", "ESLOVAQUIA", "ESLOVENIA", "ESPAÑA", "ESTADOS UNIDOS", "ESTONIA", 
+                "ETIOPIA", "FILIPINAS", "FINLANDIA", "FIYI", "FRANCIA", "GABON", "GAMBIA", "GEORGIA", "GHANA", "GRANADA", 
+                "GRECIA", "GUATEMALA", "GUINEA", "GUINEA BISSAU", "GUINEA ECUATORIAL", "GUYANA", "HAITI", "HONDURAS", 
+                "HUNGRIA", "INDIA", "INDONESIA", "IRAN", "IRAQ", "IRLANDA", "ISLANDIA", "ISLAS MARSHALL", "ISLAS SALOMON", 
+                "ISRAEL", "ITALIA", "JAMAICA", "JAPON", "JORDANIA", "KAZAJISTAN", "KENIA", "KIRGUISTAN", "KIRIBATI", 
+                "KOSOVO", "KUWAIT", "LAOS", "LESOTO", "LETONIA", "LIBANO", "LIBERIA", "LIBIA", "LIECHTENSTEIN", "LITUANIA", 
+                "LUXEMBURGO", "MACEDONIA DEL NORTE", "MADAGASCAR", "MALASIA", "MALAWI", "MALDIVAS", "MALI", "MALTA", 
+                "MARRUECOS", "MAURICIO", "MAURITANIA", "MEXICO", "MICRONESIA", "MOLDAVIA", "MONACO", "MONGOLIA", 
+                "MONTENEGRO", "MOZAMBIQUE", "NAMIBIA", "NAURU", "NEPAL", "NICARAGUA", "NIGER", "NIGERIA", "NORUEGA", 
+                "NUEVA ZELANDA", "OMAN", "PAISES BAJOS", "PAKISTAN", "PALAOS", "PANAMA", "PAPUA NUEVA GUINEA", "PARAGUAY", 
+                "PERU", "POLONIA", "PORTUGAL", "REINO UNIDO", "REPUBLICA CENTROAFRICANA", "REPUBLICA CHECA", 
+                "REPUBLICA DEMOCRATICA DEL CONGO", "REPUBLICA DOMINICANA", "RUANDA", "RUMANIA", "RUSIA", "SAMOA", 
+                "SAN CRISTOBAL Y NIEVES", "SAN MARINO", "SAN VICENTE Y LAS GRANADINAS", "SANTA LUCIA", 
+                "SANTO TOME Y PRINCIPE", "SENEGAL", "SERBIA", "SEYCHELLES", "SIERRA LEONA", "SINGAPUR", "SIRIA", 
+                "SOMALIA", "SRI LANKA", "SUDAFRICA", "SUDAN", "SUDAN DEL SUR", "SUECIA", "SUIZA", "SURINAM", 
+                "TAILANDIA", "TAIWAN", "TANZANIA", "TAYIKISTAN", "TIMOR ORIENTAL", "TOGO", "TONGA", "TRINIDAD Y TOBAGO", 
+                "TUNEZ", "TURKMENISTAN", "TURQUIA", "TUVALU", "UCRANIA", "UGANDA", "URUGUAY", "UZBEKISTAN", "VANUATU", 
+                "VENEZUELA", "VIETNAM", "YEMEN", "YIBUTI", "ZAMBIA", "ZIMBABUE"
             ];
 
             function setColorTag(colorHex) {
@@ -1664,9 +1815,10 @@ def intake_page():
                 customOff.required = false;
 
                 const officeList = PROVINCE_OFFICES[prov] || [
-                    { value: "", label: "🌐 Cualquier oficina (Any / First Available)" },
-                    { value: `${prov} - Todas las oficinas`, label: `🏢 ${prov} - Todas las oficinas (All Offices)` },
-                    { value: `CNP ${prov.toUpperCase()} - COMISARÍA PRINCIPAL`, label: `CNP ${prov} - Comisaría Principal` }
+                    { value: "", label: `🌐 Cualquier oficina en ${prov} (Any / First Available)` },
+                    { value: `${prov} - Todas las oficinas`, label: `🏢 ${prov} - Todas las oficinas (All Offices in ${prov})` },
+                    { value: `CNP ${prov.toUpperCase()} - COMISARÍA PRINCIPAL`, label: `CNP ${prov} - Comisaría Principal` },
+                    { value: `OFICINA DE EXTRANJERÍA DE ${prov.toUpperCase()}`, label: `Oficina de Extranjería de ${prov}` }
                 ];
 
                 offSel.innerHTML = officeList.map(o => `<option value="${o.value}">${o.label}</option>`).join('') +
@@ -2746,7 +2898,7 @@ def admin_page():
                 "Girona", "Almería", "Guipúzcoa", "Toledo", "Badajoz", "Navarra", "Jaén", "Castellón", "Cantabria", "Huelva", 
                 "Valladolid", "Ciudad Real", "León", "Lleida", "Cáceres", "Albacete", "Burgos", "Álava", "Salamanca", "Lugo", 
                 "La Rioja", "Ourense", "Guadalajara", "Huesca", "Cuenca", "Zamora", "Palencia", "Ávila", "Segovia", "Teruel", 
-                "Soria", "Ceuta", "Melilla"
+                "Soria", "Ceuta", "Melilla", "A Coruña", "Asturias"
             ];
 
             const ADMIN_PROCEDURES_LIST = [
