@@ -17,9 +17,9 @@ if command -v tor >/dev/null 2>&1; then
     if id debian-tor >/dev/null 2>&1; then
         chown -R debian-tor:debian-tor /tmp/tor_data 2>/dev/null
         chmod 700 /tmp/tor_data 2>/dev/null
-        su -s /bin/sh debian-tor -c 'tor --SOCKSPort 127.0.0.1:9050 --HTTPTunnelPort 127.0.0.1:9080 --ControlPort 127.0.0.1:9051 --ExitNodes "{es}" --StrictNodes 0 --CookieAuthentication 0 --DataDirectory /tmp/tor_data' >/tmp/tor.log 2>&1 &
+        su -s /bin/sh debian-tor -c 'tor --SOCKSPort 127.0.0.1:9050 --HTTPTunnelPort 127.0.0.1:9080 --ControlPort 127.0.0.1:9051 --ExitNodes "{es}" --StrictNodes 1 --CookieAuthentication 0 --DataDirectory /tmp/tor_data' >/tmp/tor.log 2>&1 &
     else
-        tor --SOCKSPort 127.0.0.1:9050 --HTTPTunnelPort 127.0.0.1:9080 --ControlPort 127.0.0.1:9051 --ExitNodes "{es}" --StrictNodes 0 --CookieAuthentication 0 --DataDirectory /tmp/tor_data >/tmp/tor.log 2>&1 &
+        tor --SOCKSPort 127.0.0.1:9050 --HTTPTunnelPort 127.0.0.1:9080 --ControlPort 127.0.0.1:9051 --ExitNodes "{es}" --StrictNodes 1 --CookieAuthentication 0 --DataDirectory /tmp/tor_data >/tmp/tor.log 2>&1 &
     fi
 else
     echo "⚠️ Tor executable not found, skipping Tor launch."

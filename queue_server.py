@@ -3060,7 +3060,7 @@ def admin_page():
                             <div class="stat-value" style="font-size: 1rem; word-break: break-all; color: #2563eb;">
                                 ${data.outbound_ip || 'N/A'}
                             </div>
-                            <small style="color: #64748b;">${data.proxy_used || 'Direct'}</small>
+                            <small style="color: #64748b;">${data.outbound_country ? ('🌍 ' + data.outbound_country) : (data.proxy_used || 'Direct')}</small>
                         </div>
                         <div class="stat-card">
                             <div class="stat-title">Session Cookie</div>

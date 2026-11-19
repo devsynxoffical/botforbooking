@@ -85,12 +85,20 @@ def inspect_portal(province: str = "Barcelona", procedure_keyword: str = "TOMA D
         client_kwargs["proxy"] = effective_proxy
 
     with httpx.Client(**client_kwargs) as client:
-        # Check Public IP as seen by outside
+        # Check Public IP and Country as seen by outside
         try:
-            ip_resp = client.get("https://api.ipify.org?format=json", timeout=10.0)
-            results["outbound_ip"] = ip_resp.json().get("ip")
-        except Exception as e:
-            results["outbound_ip"] = f"Could not determine ({e})"
+            ip_resp = client.get("https://ipinfo.io/json", timeout=8.0)
+            ip_data = ip_resp.json()
+            results["outbound_ip"] = ip_data.get("ip")
+            results["outbound_country"] = f"{ip_data.get('country', '??')} - {ip_data.get('city', 'Unknown')}"
+        except Exception:
+            try:
+                ip_resp = client.get("https://api.ipify.org?format=json", timeout=6.0)
+                results["outbound_ip"] = ip_resp.json().get("ip")
+                results["outbound_country"] = "Unknown"
+            except Exception as e:
+                results["outbound_ip"] = f"Could not determine ({e})"
+                results["outbound_country"] = "Unknown"
 
         # ==========================================
         # STEP 1: Entry Page & Province Listing
@@ -98,32 +106,45 @@ def inspect_portal(province: str = "Barcelona", procedure_keyword: str = "TOMA D
         t0 = time.time()
         try:
             r0 = client.get(DEFAULT_PORTAL_URL)
-            step1_ms = int((time.time() - t0) * 1000)
-            
-            # Extract cookies & headers
-            cookies = dict(r0.cookies)
-            headers = dict(r0.headers)
+        except Exception as e_first:
+            try:
+                from fast_monitor import renew_tor_identity
+                renew_tor_identity()
+            except Exception:
+                pass
+            time.sleep(1.0)
+            try:
+                r0 = client.get(DEFAULT_PORTAL_URL)
+            except Exception as e_retry:
+                results["steps"]["step1_entry"] = {
+                    "error": f"{e_first} (Retry also failed: {e_retry})",
+                    "latency_ms": int((time.time() - t0) * 1000)
+                }
+                return results
 
-            # Parse provinces from dropdown
-            provinces = []
-            for m in re.finditer(r'<option[^>]*value="([^"]+)"[^>]*>([^<]+)</option>', r0.text, re.IGNORECASE):
-                val = m.group(1).strip()
-                label = m.group(2).strip()
-                if val and "/citar" in val:
-                    provinces.append({"value": val, "name": label})
+        step1_ms = int((time.time() - t0) * 1000)
+        
+        # Extract cookies & headers
+        cookies = dict(r0.cookies)
+        headers = dict(r0.headers)
 
-            results["steps"]["step1_entry"] = {
-                "status_code": r0.status_code,
-                "latency_ms": step1_ms,
-                "jsessionid": cookies.get("JSESSIONID", "None assigned"),
-                "server_header": headers.get("server", "Hidden"),
-                "content_length": len(r0.text),
-                "provinces_count": len(provinces),
-                "provinces_sample": [p["name"] for p in provinces[:5]]
-            }
-        except Exception as e:
-            results["steps"]["step1_entry"] = {"error": str(e), "latency_ms": int((time.time() - t0) * 1000)}
-            return results
+        # Parse provinces from dropdown
+        provinces = []
+        for m in re.finditer(r'<option[^>]*value="([^"]+)"[^>]*>([^<]+)</option>', r0.text, re.IGNORECASE):
+            val = m.group(1).strip()
+            label = m.group(2).strip()
+            if val and "/citar" in val:
+                provinces.append({"value": val, "name": label})
+
+        results["steps"]["step1_entry"] = {
+            "status_code": r0.status_code,
+            "latency_ms": step1_ms,
+            "jsessionid": cookies.get("JSESSIONID", "None assigned"),
+            "server_header": headers.get("server", "Hidden"),
+            "content_length": len(r0.text),
+            "provinces_count": len(provinces),
+            "provinces_sample": [p["name"] for p in provinces[:5]]
+        }
 
         # ==========================================
         # STEP 2: Province Selected (Post to /citar)
