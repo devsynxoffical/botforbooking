@@ -896,6 +896,14 @@ async def test_portal_connection():
         }
 
 
+@app.get("/api/portal/inspect")
+def inspect_government_portal_endpoint(province: str = "Barcelona", procedure: str = "TOMA DE HUELLA"):
+    """Live deep diagnostic endpoint to inspect Sede Electrónica backend."""
+    from inspect_portal import inspect_portal
+    proxy = get_effective_proxy()
+    return inspect_portal(province=province, procedure_keyword=procedure, proxy=proxy)
+
+
 @app.post("/api/diagnostics/auto-find-proxies")
 async def auto_find_proxies():
     sources = [
@@ -2180,6 +2188,7 @@ def admin_page():
         <div class="tabs">
             <button class="tab-btn active" onclick="switchTab('ordersTab')">📋 Orders Queue</button>
             <button class="tab-btn" onclick="switchTab('monitorTab')">📡 Live Monitor & Alerts</button>
+            <button class="tab-btn" onclick="switchTab('inspectTab')">🔍 Portal Inspector</button>
         </div>
 
         <!-- TAB 1: ORDERS QUEUE -->
@@ -2367,6 +2376,76 @@ def admin_page():
             </div>
         </div>
 
+        <!-- TAB 3: SPANISH PORTAL BACKEND INSPECTOR -->
+        <div id="inspectTab" class="tab-content">
+            <div class="card" style="border-left: 4px solid #2563eb;">
+                <div class="card-header-flex">
+                    <div>
+                        <h3 style="margin: 0; display: flex; align-items: center; gap: 0.5rem; font-size: 1.15rem;">
+                            🔬 Sede Electrónica Backend Inspector
+                        </h3>
+                        <p style="color: #64748b; font-size: 0.85rem; margin: 0.25rem 0 0;">
+                            Live inspection of Spanish Government (Red SARA) portal backend: HTTP status, Tor exit node, session cookie (<code>JSESSIONID</code>), comisarías, and police procedures.
+                        </p>
+                    </div>
+                </div>
+
+                <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 1rem; margin-top: 1rem;">
+                    <div>
+                        <label for="inspectProvinceSelect">📍 Target Province</label>
+                        <select id="inspectProvinceSelect"></select>
+                    </div>
+                    <div>
+                        <label for="inspectProcedureInput">📋 Procedure Keyword</label>
+                        <input type="text" id="inspectProcedureInput" value="TOMA DE HUELLA" placeholder="e.g. TOMA DE HUELLA, RECOGIDA DE TARJETA, ASILO">
+                    </div>
+                    <div style="display: flex; align-items: flex-end;">
+                        <button onclick="runPortalInspection()" id="btnRunInspect" class="btn" style="width: 100%; height: 42px;">
+                            ⚡ Inspect Spanish Portal
+                        </button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- INSPECTION RESULTS CONTAINER -->
+            <div id="inspectResultContainer" style="display: none;">
+                <div class="stats" id="inspectStatsRow"></div>
+
+                <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 1rem; margin-bottom: 1.25rem;">
+                    <!-- Step 1 & 2 Card: Portal Info & Comisarías -->
+                    <div class="card" style="margin-bottom: 0;">
+                        <h4 style="margin: 0 0 0.75rem; color: #1e293b; font-size: 0.95rem; display: flex; align-items: center; justify-content: space-between;">
+                            <span>🏢 Comisarías & Sedes Disponibles</span>
+                            <span id="inspectOfficesCountBadge" class="badge" style="background: #e0f2fe; color: #0369a1;">0 Offices</span>
+                        </h4>
+                        <div id="inspectOfficesList" style="max-height: 240px; overflow-y: auto; font-size: 0.82rem; border: 1px solid var(--border); border-radius: 8px; padding: 0.5rem; background: #f8fafc;">
+                        </div>
+                    </div>
+
+                    <!-- Step 3 Card: Trámites Disponibles -->
+                    <div class="card" style="margin-bottom: 0;">
+                        <h4 style="margin: 0 0 0.75rem; color: #1e293b; font-size: 0.95rem; display: flex; align-items: center; justify-content: space-between;">
+                            <span>👮 Trámites de Policía Nacional & Extranjería</span>
+                            <span id="inspectProcsCountBadge" class="badge" style="background: #ede9fe; color: #6d28d9;">0 Procedures</span>
+                        </h4>
+                        <div id="inspectProceduresList" style="max-height: 240px; overflow-y: auto; font-size: 0.82rem; border: 1px solid var(--border); border-radius: 8px; padding: 0.5rem; background: #f8fafc;">
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Slot Status Diagnostic Banner -->
+                <div id="inspectSlotVerdictBanner" class="card" style="margin-bottom: 1.25rem;"></div>
+
+                <!-- Raw JSON Accordion -->
+                <details class="card" style="background: #0f172a; color: #f8fafc; border-color: #334155; margin-bottom: 1.25rem;">
+                    <summary style="cursor: pointer; font-weight: 600; font-size: 0.85rem; color: #94a3b8; outline: none;">
+                        📄 View Raw Backend JSON Output
+                    </summary>
+                    <pre id="inspectRawJson" style="margin-top: 0.75rem; font-size: 0.78rem; overflow-x: auto; color: #38bdf8; font-family: monospace;"></pre>
+                </details>
+            </div>
+        </div>
+
         <script>
             function switchTab(tabId) {
                 document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
@@ -2378,6 +2457,8 @@ def admin_page():
                     loadTelegramSettings();
                     loadMonitors();
                     checkDaemonStatus();
+                } else if (tabId === 'inspectTab') {
+                    initAdminDropdowns();
                 } else {
                     loadOrders();
                 }
@@ -2937,6 +3018,147 @@ def admin_page():
                 if (procSel) {
                     procSel.innerHTML = ADMIN_PROCEDURES_LIST.map(p => `<option value="${p.value}">${p.label}</option>`).join('');
                     procSel.value = ADMIN_PROCEDURES_LIST[0].value;
+                }
+
+                const inspProv = document.getElementById('inspectProvinceSelect');
+                if (inspProv && inspProv.options.length === 0) {
+                    inspProv.innerHTML = ADMIN_SPANISH_PROVINCES.map(p => `<option value="${p}">${p}</option>`).join('');
+                    inspProv.value = "Barcelona";
+                }
+            }
+
+            async function runPortalInspection() {
+                const prov = document.getElementById('inspectProvinceSelect').value;
+                const proc = document.getElementById('inspectProcedureInput').value.trim() || 'TOMA DE HUELLA';
+                const btn = document.getElementById('btnRunInspect');
+                const container = document.getElementById('inspectResultContainer');
+                
+                btn.disabled = true;
+                btn.innerHTML = '⏳ Querying Portal...';
+                
+                try {
+                    const res = await fetch(`/api/portal/inspect?province=${encodeURIComponent(prov)}&procedure=${encodeURIComponent(proc)}`);
+                    const data = await res.json();
+                    
+                    container.style.display = 'block';
+                    
+                    const s1 = data.steps?.step1_entry || {};
+                    const s2 = data.steps?.step2_province_page || {};
+                    const s3 = data.steps?.step3_procedure_query || {};
+                    
+                    const statsRow = document.getElementById('inspectStatsRow');
+                    statsRow.innerHTML = `
+                        <div class="stat-card">
+                            <div class="stat-title">Portal HTTP</div>
+                            <div class="stat-value" style="color: ${s1.status_code === 200 ? '#16a34a' : '#dc2626'}">
+                                ${s1.status_code || 'Err'}
+                            </div>
+                            <small style="color: #64748b;">Latency: ${s1.latency_ms || 0}ms</small>
+                        </div>
+                        <div class="stat-card">
+                            <div class="stat-title">Outbound IP</div>
+                            <div class="stat-value" style="font-size: 1rem; word-break: break-all; color: #2563eb;">
+                                ${data.outbound_ip || 'N/A'}
+                            </div>
+                            <small style="color: #64748b;">${data.proxy_used || 'Direct'}</small>
+                        </div>
+                        <div class="stat-card">
+                            <div class="stat-title">Session Cookie</div>
+                            <div class="stat-value" style="font-size: 0.85rem; font-family: monospace; color: #7c3aed;">
+                                ${s1.jsessionid ? (s1.jsessionid.substring(0, 14) + '...') : 'None'}
+                            </div>
+                            <small style="color: #64748b;">Server: ${s1.server_header || 'Apache'}</small>
+                        </div>
+                        <div class="stat-card">
+                            <div class="stat-title">Offices / Comisarías</div>
+                            <div class="stat-value" style="color: #0284c7;">
+                                ${s2.offices_count || 0}
+                            </div>
+                            <small style="color: #64748b;">${data.target_province}</small>
+                        </div>
+                    `;
+                    
+                    const officesList = document.getElementById('inspectOfficesList');
+                    const officesBadge = document.getElementById('inspectOfficesCountBadge');
+                    const offices = s2.offices || [];
+                    officesBadge.textContent = `${offices.length} Offices`;
+                    if (offices.length === 0) {
+                        officesList.innerHTML = '<div style="color: #94a3b8; padding: 0.5rem;">No offices found or single centralized office.</div>';
+                    } else {
+                        officesList.innerHTML = offices.map(o => `
+                            <div style="padding: 0.35rem 0.5rem; border-bottom: 1px solid #e2e8f0; display: flex; justify-content: space-between; align-items: center;">
+                                <span style="font-weight: 500;">${o.name}</span>
+                                <span class="badge" style="background: #e2e8f0; color: #475569; font-size: 0.7rem;">Code: ${o.value || 'ALL'}</span>
+                            </div>
+                        `).join('');
+                    }
+                    
+                    const procsList = document.getElementById('inspectProceduresList');
+                    const procsBadge = document.getElementById('inspectProcsCountBadge');
+                    const polProcs = s2.police_procedures || [];
+                    const extProcs = s2.extranjeria_procedures || [];
+                    procsBadge.textContent = `${polProcs.length + extProcs.length} Procedures`;
+                    
+                    let procHtml = '';
+                    if (polProcs.length > 0) {
+                        procHtml += '<div style="font-weight: 700; color: #1e3a8a; margin: 0.25rem 0; font-size: 0.78rem;">👮 POLICÍA NACIONAL:</div>';
+                        procHtml += polProcs.map(p => `
+                            <div style="padding: 0.3rem 0.4rem; border-bottom: 1px solid #f1f5f9; display: flex; justify-content: space-between; align-items: center;">
+                                <span style="font-size: 0.8rem;">${p.title}</span>
+                                <span class="badge" style="background: #dbeafe; color: #1e40af; font-size: 0.68rem; margin-left: 0.5rem;">${p.code}</span>
+                            </div>
+                        `).join('');
+                    }
+                    if (extProcs.length > 0) {
+                        procHtml += '<div style="font-weight: 700; color: #047857; margin: 0.5rem 0 0.25rem; font-size: 0.78rem;">🏛️ EXTRANJERÍA:</div>';
+                        procHtml += extProcs.map(e => `
+                            <div style="padding: 0.3rem 0.4rem; border-bottom: 1px solid #f1f5f9; display: flex; justify-content: space-between; align-items: center;">
+                                <span style="font-size: 0.8rem;">${e.title}</span>
+                                <span class="badge" style="background: #d1fae5; color: #065f46; font-size: 0.68rem; margin-left: 0.5rem;">${e.code}</span>
+                            </div>
+                        `).join('');
+                    }
+                    procsList.innerHTML = procHtml || '<div style="color: #94a3b8; padding: 0.5rem;">No procedure dropdowns found in response.</div>';
+                    
+                    const banner = document.getElementById('inspectSlotVerdictBanner');
+                    if (s3.is_rate_limited) {
+                        banner.innerHTML = `
+                            <div style="background: #fef2f2; border: 1px solid #ef4444; border-radius: 8px; padding: 1rem; color: #991b1b;">
+                                <strong>🚨 Red SARA Rate-Limit / Access Restricted!</strong><br>
+                                The Spanish Government firewall detected frequent requests. Rotate Tor circuit or switch residential proxy.
+                            </div>
+                        `;
+                    } else if (s3.has_no_slots_warning) {
+                        banner.innerHTML = `
+                            <div style="background: #fffbeb; border: 1px solid #f59e0b; border-radius: 8px; padding: 1rem; color: #92400e;">
+                                <strong>⚠️ "En este momento no hay citas disponibles"</strong><br>
+                                Tested Procedure: <em>${s3.tested_procedure_name || 'N/A'} (Code ${s3.tested_procedure_code || 'N/A'})</em>.<br>
+                                The government server responded cleanly (HTTP 200) confirming our Spanish proxy is accepted, but no appointment slots are currently released for this combination.
+                            </div>
+                        `;
+                    } else if (s3.has_entrar_button || s3.has_applicant_form) {
+                        banner.innerHTML = `
+                            <div style="background: #f0fdf4; border: 2px solid #22c55e; border-radius: 8px; padding: 1rem; color: #166534;">
+                                <strong>🔥 SLOTS OR FORM ACCESSIBLE!</strong><br>
+                                The portal returned the "Entrar" button or Applicant Data form without the "no slots" warning. The automated booking engine can proceed immediately.
+                            </div>
+                        `;
+                    } else {
+                        banner.innerHTML = `
+                            <div style="background: #f8fafc; border: 1px solid #cbd5e1; border-radius: 8px; padding: 1rem; color: #334155;">
+                                <strong>ℹ️ Portal Status: HTTP ${s3.status_code || s1.status_code || 200}</strong><br>
+                                Portal responded in ${s3.latency_ms || s1.latency_ms || 0}ms. Title: ${s3.page_title || 'N/A'}.
+                            </div>
+                        `;
+                    }
+                    
+                    document.getElementById('inspectRawJson').textContent = JSON.stringify(data, null, 2);
+                    
+                } catch (e) {
+                    alert('Inspection request failed: ' + e.message);
+                } finally {
+                    btn.disabled = false;
+                    btn.innerHTML = '⚡ Inspect Spanish Portal';
                 }
             }
 
