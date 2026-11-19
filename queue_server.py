@@ -501,7 +501,12 @@ def auto_book_order(order_id: str):
 
     python_bin = get_python_bin()
     booker_script = BASE_DIR / "auto_booker.py"
-    subprocess.Popen([python_bin, str(booker_script), "--order-id", order_id.upper()])
+    cmd = [python_bin, str(booker_script), "--order-id", order_id.upper()]
+    is_linux = sys.platform.startswith("linux")
+    has_display = bool(os.environ.get("DISPLAY"))
+    if is_linux and not has_display:
+        cmd.append("--headless")
+    subprocess.Popen(cmd)
 
     return {"status": "started", "order_id": order_id.upper(), "message": f"Auto-booker started for {order_id.upper()}"}
 
@@ -2415,7 +2420,10 @@ def admin_page():
                                     ${o.certificate_path ? '<span class="badge" style="background: #dcfce7; color: #166534; font-size: 0.7rem; padding: 1px 5px; margin-left: 3px;" title="Certificado Digital FNMT / Cl@ve">+80% 🔐 Cert</span>' : ''}
                                 </td>
                                 <td>${o.doc_type}: <code>${o.doc_number}</code></td>
-                                <td>${o.procedure} <br><small style="color: #64748b;">${o.province} ${o.office ? '('+o.office+')' : ''}</small></td>
+                                <td>
+                                    ${o.procedure} <br><small style="color: #64748b;">${o.province} ${o.office ? '('+o.office+')' : ''}</small>
+                                    ${o.appointment_date ? `<div style="margin-top: 3px;"><span class="badge" style="background: #ecfdf5; color: #047857; border: 1px solid #a7f3d0; font-size: 0.72rem; padding: 2px 6px;">📅 Cita: ${o.appointment_date} ${o.appointment_time || ''}</span></div>` : ''}
+                                </td>
                                 <td>${o.email}<br><small style="color: #64748b;">${o.phone}</small></td>
                                 <td>
                                     <span class="badge badge-${o.status}">${o.status}</span>

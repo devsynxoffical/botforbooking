@@ -220,7 +220,7 @@ def init_db():
                         updated_at TEXT NOT NULL
                     )
                 """)
-                for col in ["birth_date", "birth_country", "card_expiry_date", "certificate_path", "certificate_password", "color_tag", "max_date"]:
+                for col in ["birth_date", "birth_country", "card_expiry_date", "certificate_path", "certificate_password", "color_tag", "max_date", "appointment_date", "appointment_time"]:
                     try:
                         conn.execute(f"ALTER TABLE orders ADD COLUMN IF NOT EXISTS {col} TEXT")
                     except Exception:
@@ -278,6 +278,20 @@ def init_db():
                         SET procedure = 'POLICIA-TOMA DE HUELLA (EXPEDICIÓN DE TARJETA) INICIAL, RENOVACIÓN, DUPLICADO Y LEY 14/2013'
                         WHERE procedure LIKE '%LARGA DURACIÓN%' AND procedure LIKE '%TOMA DE HUELLA%'
                     """)
+                    # Reset any stuck searching orders back to waiting so they can be booked
+                    conn.execute("""
+                        UPDATE orders 
+                        SET status = 'waiting' 
+                        WHERE status = 'searching'
+                    """)
+                    # Ensure Barcelona and Madrid have TIE collection monitors
+                    for p in ["Barcelona", "Madrid", "Valencia", "Alicante"]:
+                        cur.execute("SELECT id FROM monitors WHERE LOWER(province) = LOWER(?) AND procedure LIKE '%RECOGIDA DE TARJETA%'", (p,))
+                        if not cur.fetchone():
+                            conn.execute(
+                                "INSERT INTO monitors (province, procedure, is_active, interval_seconds, created_at) VALUES (?, ?, 1, 60, ?)",
+                                (p, "POLICIA-RECOGIDA DE TARJETA DE IDENTIDAD DE EXTRANJERO (TIE)", datetime.datetime.now(datetime.timezone.utc).isoformat())
+                            )
                 except Exception:
                     pass
 
@@ -314,7 +328,7 @@ def init_db():
                 updated_at TEXT NOT NULL
             )
         """)
-        for col in ["birth_date", "birth_country", "card_expiry_date", "certificate_path", "certificate_password", "color_tag", "max_date"]:
+        for col in ["birth_date", "birth_country", "card_expiry_date", "certificate_path", "certificate_password", "color_tag", "max_date", "appointment_date", "appointment_time"]:
             try:
                 conn.execute(f"ALTER TABLE orders ADD COLUMN {col} TEXT")
             except sqlite3.OperationalError:
@@ -371,6 +385,20 @@ def init_db():
                 SET procedure = 'POLICIA-TOMA DE HUELLA (EXPEDICIÓN DE TARJETA) INICIAL, RENOVACIÓN, DUPLICADO Y LEY 14/2013'
                 WHERE procedure LIKE '%LARGA DURACIÓN%' AND procedure LIKE '%TOMA DE HUELLA%'
             """)
+            # Reset any stuck searching orders back to waiting
+            conn.execute("""
+                UPDATE orders 
+                SET status = 'waiting' 
+                WHERE status = 'searching'
+            """)
+            # Ensure major provinces have TIE collection monitors
+            for p in ["Barcelona", "Madrid", "Valencia", "Alicante"]:
+                cur.execute("SELECT id FROM monitors WHERE LOWER(province) = LOWER(?) AND procedure LIKE '%RECOGIDA DE TARJETA%'", (p,))
+                if not cur.fetchone():
+                    conn.execute(
+                        "INSERT INTO monitors (province, procedure, is_active, interval_seconds, created_at) VALUES (?, ?, 1, 60, ?)",
+                        (p, "POLICIA-RECOGIDA DE TARJETA DE IDENTIDAD DE EXTRANJERO (TIE)", datetime.datetime.now(datetime.timezone.utc).isoformat())
+                    )
         except Exception:
             pass
 

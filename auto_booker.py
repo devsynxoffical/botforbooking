@@ -180,11 +180,16 @@ def run_auto_booking(order_id: str, headless: bool = False) -> Dict[str, Any]:
         except Exception as e:
             print(f"⚠️ Could not prepare client certificate: {e}")
 
+    # Detect headless requirement: on Linux container without X11 DISPLAY, headless must be True
+    is_linux = sys.platform.startswith("linux")
+    has_display = bool(os.environ.get("DISPLAY"))
+    effective_headless = True if (is_linux and not has_display) else headless
+
     with sync_playwright() as p:
-        # Launch browser (visible by default so operator can solve CAPTCHA if prompted)
+        # Launch browser
         browser = p.chromium.launch(
-            headless=headless,
-            args=["--start-maximized", "--disable-blink-features=AutomationControlled"],
+            headless=effective_headless,
+            args=["--start-maximized", "--disable-blink-features=AutomationControlled", "--no-sandbox", "--disable-setuid-sandbox"],
             proxy=proxy_config
         )
         context_args = {
@@ -200,7 +205,7 @@ def run_auto_booking(order_id: str, headless: bool = False) -> Dict[str, Any]:
         try:
             # Step 1: Open Portal
             print("[1/7] Opening Portal...")
-            page.goto(portal_url, wait_until="domcontentloaded", timeout=30000)
+            page.goto(portal_url, wait_until="domcontentloaded", timeout=35000)
             page.wait_for_timeout(1000)
 
             # Step 2: Select Province
@@ -222,28 +227,61 @@ def run_auto_booking(order_id: str, headless: bool = False) -> Dict[str, Any]:
             page.wait_for_load_state("domcontentloaded")
             page.wait_for_timeout(1500)
 
-            # Step 3: Select Procedure
+            # Step 3: Select Office (if available) & Procedure
             print(f"[3/7] Selecting Procedure: {order['procedure']}...")
-            proc_selectors = ['select#tramiteGrupo\\[0\\]', 'select[name="tramite"]', 'select#tramite']
-            tramite_sel = None
-            for sel in proc_selectors:
-                loc = page.locator(sel).first
-                if loc.is_visible():
-                    tramite_sel = loc
+
+            # 3a. Select Office if specified
+            office_target = (order.get("office") or "").strip()
+            if office_target and "cualquier" not in office_target.lower():
+                sede_sel = page.locator('select#sIdSede, select[name="sIdSede"], select#sede').first
+                if sede_sel.is_visible():
+                    for opt in sede_sel.locator("option").all():
+                        opt_txt = opt.inner_text().strip().upper()
+                        if office_target.upper() in opt_txt or opt_txt in office_target.upper():
+                            sede_sel.select_option(value=opt.get_attribute("value"))
+                            print(f"   🏢 Selected Office: {opt.inner_text().strip()}")
+                            break
+
+            # 3b. Select Procedure (Search across both Policía and Extranjería groups)
+            tramite_sels = page.locator('select[name*="tramite"], select[id*="tramite"], select#tramiteGrupo\\[0\\], select#tramiteGrupo\\[1\\]').all()
+            matched_proc = False
+            target_proc_upper = order['procedure'].upper()
+
+            # First try exact / substring match
+            for t_sel in tramite_sels:
+                if not t_sel.is_visible():
+                    continue
+                for opt in t_sel.locator("option").all():
+                    opt_txt = opt.inner_text().strip().upper()
+                    if target_proc_upper in opt_txt or opt_txt in target_proc_upper:
+                        t_sel.select_option(value=opt.get_attribute("value"))
+                        matched_proc = True
+                        print(f"   👮 Selected Procedure: {opt.inner_text().strip()}")
+                        break
+                if matched_proc:
                     break
 
-            if tramite_sel:
-                matched_proc = False
-                for opt in tramite_sel.locator("option").all():
-                    if order["procedure"].upper() in opt.inner_text().upper():
-                        tramite_sel.select_option(value=opt.get_attribute("value"))
-                        matched_proc = True
-                        break
+            # Keyword fallback (e.g. TOMA DE HUELLA, RECOGIDA DE TARJETA, ASILO, TIE)
+            if not matched_proc:
+                keywords = ["TOMA DE HUELLA", "RECOGIDA DE TARJETA", "ASILO", "AUTORIZACIONES", "TIE"]
+                matched_kw = next((kw for kw in keywords if kw in target_proc_upper), None)
+                if matched_kw:
+                    for t_sel in tramite_sels:
+                        if not t_sel.is_visible():
+                            continue
+                        for opt in t_sel.locator("option").all():
+                            opt_txt = opt.inner_text().strip().upper()
+                            if matched_kw in opt_txt:
+                                t_sel.select_option(value=opt.get_attribute("value"))
+                                matched_proc = True
+                                print(f"   👮 Selected Procedure by keyword '{matched_kw}': {opt.inner_text().strip()}")
+                                break
+                        if matched_proc:
+                            break
 
-                if matched_proc:
-                    page.locator('input#btnAceptar, input[type="submit"][value="Aceptar"]').first.click()
-                    page.wait_for_load_state("domcontentloaded")
-                    page.wait_for_timeout(1500)
+            page.locator('input#btnAceptar, input[type="submit"][value="Aceptar"]').first.click()
+            page.wait_for_load_state("domcontentloaded")
+            page.wait_for_timeout(1500)
 
             # Check if instructions page shown
             entrar_btn = page.locator('input#btnEntrar, input[value="Entrar"]').first
@@ -342,17 +380,19 @@ def run_auto_booking(order_id: str, headless: bool = False) -> Dict[str, Any]:
                 page.wait_for_load_state("domcontentloaded")
                 page.wait_for_timeout(2000)
 
-            # Step 7: Check availability & slot selection
+            # Step 7: Check availability & slot selection (Calendar Grid & Radio Buttons)
+            print("[7/8] Analyzing available appointment slots (Calendar Grid / Radio Buttons)...")
             body_text = page.locator("body").inner_text()
-            if "no hay citas disponibles" in body_text.lower():
+            if "no hay citas disponibles" in body_text.lower() or "en este momento no hay citas" in body_text.lower():
                 print("❌ No appointment slots currently open at final step.")
                 update_order_status(order_id, "waiting", "No hubo citas disponibles en el paso final. De vuelta a la cola.")
                 browser.close()
                 return {"status": "no_slots", "message": "No slots available at final step"}
 
-            # Slots found! Check against max_date if specified
-            radio_slots = page.locator('input[type="radio"][name*="cita"]').all()
-            chosen_slot = None
+            chosen_date_str = ""
+            chosen_time_str = ""
+            slot_claimed = False
+
             max_date_str = str(order.get("max_date") or "").strip()
             max_dt = None
             if max_date_str:
@@ -361,55 +401,171 @@ def run_auto_booking(order_id: str, headless: bool = False) -> Dict[str, Any]:
                 except Exception:
                     pass
 
-            if radio_slots:
-                print(f"👉 Found {len(radio_slots)} appointment slot option(s)...")
-                for r in radio_slots:
-                    try:
-                        parent_text = r.locator("..").inner_text()
-                        d_match = re.search(r'(\d{2})/(\d{2})/(\d{4})', parent_text)
-                        if d_match and max_dt:
-                            slot_d = datetime.date(int(d_match.group(3)), int(d_match.group(2)), int(d_match.group(1)))
-                            if slot_d <= max_dt:
-                                chosen_slot = r
-                                print(f"   ✅ Selected slot {slot_d} (within client max date: {max_dt})")
+            # Strategy 1: Table Calendar Grid (as shown in official Sede appointment grid)
+            # Headers have dates: 27/10/2026, 28/10/2026... Rows have times: 09:30, 09:42... Cells have FREE / LIBRE links
+            try:
+                tables = page.locator("table").all()
+                for tbl in tables:
+                    header_cells = tbl.locator("tr").first.locator("th, td").all()
+                    date_cols = {}
+                    for idx, cell in enumerate(header_cells):
+                        txt = cell.inner_text().strip()
+                        d_match = re.search(r'(\d{2}/\d{2}/\d{4})', txt)
+                        if d_match:
+                            date_cols[idx] = d_match.group(1)
+
+                    if date_cols:
+                        print(f"👉 Detected appointment calendar table with dates: {list(date_cols.values())}")
+                        rows = tbl.locator("tr").all()
+                        for row in rows[1:]:
+                            row_cells = row.locator("td, th").all()
+                            if not row_cells:
+                                continue
+                            time_txt = row_cells[0].inner_text().strip()
+                            t_match = re.search(r'(\d{1,2}:\d{2})', time_txt)
+                            row_time = t_match.group(1) if t_match else ""
+
+                            for col_idx, cell in enumerate(row_cells):
+                                if col_idx not in date_cols:
+                                    continue
+                                col_date = date_cols[col_idx]
+                                cell_txt = cell.inner_text().strip().upper()
+
+                                # Available cell: contains link or FREE / LIBRE
+                                has_link = cell.locator("a, button, input[type='button'], input[type='submit']").count() > 0
+                                is_free = has_link or ("FREE" in cell_txt or "LIBRE" in cell_txt or "DISPONIBLE" in cell_txt)
+                                is_taken = "TAKEN" in cell_txt or "OCUPADA" in cell_txt or "NO DISPONIBLE" in cell_txt
+
+                                if is_free and not is_taken:
+                                    # Check max_date constraint
+                                    if max_dt:
+                                        try:
+                                            dp = col_date.split("/")
+                                            s_dt = datetime.date(int(dp[2]), int(dp[1]), int(dp[0]))
+                                            if s_dt > max_dt:
+                                                print(f"   ⏩ Slot {col_date} exceeds client max date ({max_dt}). Skipping...")
+                                                continue
+                                        except Exception:
+                                            pass
+
+                                    chosen_date_str = col_date
+                                    chosen_time_str = row_time
+                                    print(f"   🎯 Claiming Table Slot on {col_date} at {row_time}...")
+                                    click_target = cell.locator("a, button, input[type='button'], input[type='submit']").first
+                                    if click_target.count() > 0:
+                                        click_target.click()
+                                    else:
+                                        cell.click()
+                                    page.wait_for_load_state("domcontentloaded")
+                                    page.wait_for_timeout(2000)
+                                    slot_claimed = True
+                                    break
+                            if slot_claimed:
                                 break
-                            else:
-                                print(f"   ⏩ Slot {slot_d} is after client max date ({max_dt}). Skipping...")
-                        else:
-                            chosen_slot = r
-                            break
-                    except Exception:
-                        chosen_slot = r
+                    if slot_claimed:
                         break
+            except Exception as e:
+                print(f"⚠️ Error while parsing table calendar slots: {e}")
 
-                if not chosen_slot and max_dt:
-                    print(f"⚠️ All available slots exceed client's max date ({max_date_str}). Returning to queue.")
-                    update_order_status(order_id, "waiting", f"Citas disponibles superan fecha límite ({max_date_str}). Esperando turno anterior.")
-                    browser.close()
-                    return {"status": "skipped_due_to_max_date", "message": f"Slots exceed max date {max_date_str}"}
+            # Strategy 2: Radio buttons (Format B: list of radio buttons with dates)
+            if not slot_claimed:
+                radio_slots = page.locator('input[type="radio"][name*="cita"]').all()
+                if radio_slots:
+                    print(f"👉 Found {len(radio_slots)} radio appointment slot(s)...")
+                    chosen_radio = None
+                    for r in radio_slots:
+                        try:
+                            parent_text = r.locator("..").inner_text()
+                            d_match = re.search(r'(\d{2})/(\d{2})/(\d{4})', parent_text)
+                            t_match = re.search(r'(\d{1,2}:\d{2})', parent_text)
+                            slot_d_str = d_match.group(0) if d_match else ""
+                            slot_t_str = t_match.group(0) if t_match else ""
 
-                target_slot = chosen_slot or radio_slots[0]
-                target_slot.check()
-                page.locator('input#btnSiguiente, input[value="Siguiente"]').first.click()
-                page.wait_for_load_state("domcontentloaded")
-                page.wait_for_timeout(2000)
+                            if d_match and max_dt:
+                                slot_d = datetime.date(int(d_match.group(3)), int(d_match.group(2)), int(d_match.group(1)))
+                                if slot_d <= max_dt:
+                                    chosen_radio = r
+                                    chosen_date_str = slot_d_str
+                                    chosen_time_str = slot_t_str
+                                    print(f"   ✅ Selected radio slot {slot_d} {slot_t_str} (within max date: {max_dt})")
+                                    break
+                                else:
+                                    print(f"   ⏩ Slot {slot_d} is after client max date ({max_dt}). Skipping...")
+                            else:
+                                chosen_radio = r
+                                chosen_date_str = slot_d_str
+                                chosen_time_str = slot_t_str
+                                break
+                        except Exception:
+                            chosen_radio = r
+                            break
+
+                    target_slot = chosen_radio or radio_slots[0]
+                    target_slot.check()
+                    page.locator('input#btnSiguiente, input[value="Siguiente"]').first.click()
+                    page.wait_for_load_state("domcontentloaded")
+                    page.wait_for_timeout(2000)
+                    slot_claimed = True
+
+            # Strategy 3: Any FREE / LIBRE links on page
+            if not slot_claimed:
+                free_links = page.locator('a:has-text("LIBRE"), a:has-text("FREE"), a:has-text("Libre"), button:has-text("LIBRE"), button:has-text("FREE")').all()
+                if free_links:
+                    print(f"👉 Found {len(free_links)} free slot link(s)...")
+                    first_link = free_links[0]
+                    parent_text = first_link.locator("..").inner_text()
+                    d_match = re.search(r'(\d{2})/(\d{2})/(\d{4})', parent_text)
+                    t_match = re.search(r'(\d{1,2}:\d{2})', parent_text)
+                    if d_match:
+                        chosen_date_str = d_match.group(0)
+                    if t_match:
+                        chosen_time_str = t_match.group(0)
+                    first_link.click()
+                    page.wait_for_load_state("domcontentloaded")
+                    page.wait_for_timeout(2000)
+                    slot_claimed = True
+
+            # Save extracted Date & Time into database
+            appointment_str = ""
+            if chosen_date_str and chosen_time_str:
+                appointment_str = f"{chosen_date_str} a las {chosen_time_str}"
+            elif chosen_date_str:
+                appointment_str = chosen_date_str
+
+            if appointment_str:
+                print(f"📌 Confirmed Chosen Slot: {appointment_str}")
+                try:
+                    with get_db() as conn:
+                        conn.execute(
+                            "UPDATE orders SET appointment_date = ?, appointment_time = ? WHERE order_id = ?",
+                            (chosen_date_str, chosen_time_str, order_id.upper())
+                        )
+                        conn.commit()
+                except Exception:
+                    pass
 
             # Step 8: SMS OTP VERIFICATION CHECKPOINT
             print("\n" + "=" * 65)
             print("🚨🚨 REACHED SMS OTP VERIFICATION SCREEN! 🚨🚨")
             print("=" * 65)
 
-            update_order_status(order_id, "code_pending", "Código SMS enviado al teléfono del cliente. Esperando código...")
+            update_order_status(
+                order_id, 
+                "code_pending", 
+                f"Cita seleccionada: {appointment_str or 'Pendiente de confirmación'}. Esperando código SMS de verificación..."
+            )
             play_urgent_alarm()
 
             send_tg_notification(
-                headline="📲 <b>¡URGENTE: CÓDIGO SMS ENVIADO!</b> 📲",
+                headline="📲 <b>¡URGENTE: CITA SELECCIONADA Y CÓDIGO SMS ENVIADO!</b> 📲",
                 body=(
                     f"👤 <b>Cliente:</b> {order['name']} (<code>{order['doc_number']}</code>)\n"
-                    f"📱 <b>Teléfono:</b> <code>{order['phone']}</code>\n"
-                    f"📍 <b>Provincia:</b> {order['province']}\n\n"
-                    f"⚡ <i>El portal del Gobierno ha enviado el código SMS al teléfono del cliente.</i>\n"
-                    f"👉 <b>Introduce el código SMS recibido en el panel de control o terminal.</b>"
+                    f"📅 <b>Fecha Asignada:</b> <b>{chosen_date_str or 'Asignada por Policía'}</b>\n"
+                    f"⏰ <b>Hora Asignada:</b> <b>{chosen_time_str or 'Asignada por Policía'}</b>\n"
+                    f"📍 <b>Provincia / Oficina:</b> {order['province']} ({order.get('office') or 'Oficina Principal'})\n"
+                    f"📱 <b>Teléfono:</b> <code>{order['phone']}</code>\n\n"
+                    f"⚡ <i>El bot ha seleccionado el turno libre en el sistema oficial y la Policía ha enviado el SMS.</i>\n"
+                    f"👉 <b>Introduce el código SMS de verificación en el panel de control (/admin) de inmediato.</b>"
                 )
             )
 
@@ -451,12 +607,12 @@ def run_auto_booking(order_id: str, headless: bool = False) -> Dict[str, Any]:
                     just_code = just_match.group(1).upper() if just_match else "6FB385XU"
 
                     date_match = re.search(r'(\d{2}/\d{2}/\d{4}\s+\d{2}:\d{2})', confirm_body)
-                    date_val = date_match.group(1) if date_match else datetime.datetime.now().strftime("%d/%m/%Y %H:%M")
+                    date_val = date_match.group(1) if date_match else (appointment_str or datetime.datetime.now().strftime("%d/%m/%Y %H:%M"))
 
                     addr_match = re.search(r'(?:dirección|sede|comisaría|oficina)[:\s]+([^\n\r]+)', confirm_body, re.IGNORECASE)
                     address_val = addr_match.group(1).strip() if addr_match else (order.get("office") or f"CNP COMISARÍA DE {order['province'].upper()}")
 
-                    update_order_status(order_id, "booked", f"Cita confirmada exitosamente. Justificante: {just_code}")
+                    update_order_status(order_id, "booked", f"Cita confirmada exitosamente ({date_val}). Justificante: {just_code}")
 
                     # Send exact formatted booking confirmation to Telegram
                     config = load_config()
@@ -477,7 +633,7 @@ def run_auto_booking(order_id: str, headless: bool = False) -> Dict[str, Any]:
                         broadcast_telegram_message(bot_token, chat_id, conf_msg)
 
                     browser.close()
-                    return {"status": "booked", "order_id": order_id, "receipt": str(receipt_path)}
+                    return {"status": "booked", "order_id": order_id, "receipt": str(receipt_path), "date": date_val}
                 else:
                     print("⚠️ Code entered but confirmation page was not clearly detected. Check screenshot.")
                     update_order_status(order_id, "code_pending", "Código enviado, revise el navegador.")
@@ -488,7 +644,7 @@ def run_auto_booking(order_id: str, headless: bool = False) -> Dict[str, Any]:
 
         except Exception as e:
             print(f"Error during auto booking: {e}")
-            update_order_status(order_id, "failed", f"Error en ejecución: {str(e)[:100]}")
+            update_order_status(order_id, "waiting", f"Error en ejecución: {str(e)[:80]}. Reintentando...")
             browser.close()
             return {"status": "error", "message": str(e)}
 

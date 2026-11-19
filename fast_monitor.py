@@ -198,7 +198,7 @@ class FastPortalProber:
         if self.client is None or self.client.is_closed:
             self.client = httpx.AsyncClient(
                 headers=HEADERS,
-                timeout=httpx.Timeout(15.0, connect=6.0),
+                timeout=httpx.Timeout(35.0, connect=20.0, read=25.0),
                 follow_redirects=True,
                 http2=HAS_HTTP2,
                 proxy=self.proxy
@@ -280,11 +280,22 @@ class FastPortalProber:
             proc_val = match.group(1)
             proc_label = match.group(2).strip()
 
-            # Step 2: Submit procedure
+            # Step 2: Submit procedure (identify correct select name: tramiteGrupo[0], tramiteGrupo[1], or tramite)
+            select_name = "tramiteGrupo[0]"
+            before_match = html1[:match.start()]
+            sel_matches = re.findall(r'<select[^>]*name="([^"]+)"', before_match, re.IGNORECASE)
+            if sel_matches:
+                select_name = sel_matches[-1]
+
             step2_data = {
-                "tramiteGrupo[0]": proc_val,
+                select_name: proc_val,
                 "btnAceptar": "Aceptar"
             }
+            # Include default office if required
+            sede_m = re.search(r'<select[^>]*name="sIdSede"[^>]*>.*?<option[^>]*value="([^"]+)"', html1, re.DOTALL | re.IGNORECASE)
+            if sede_m:
+                step2_data["sIdSede"] = sede_m.group(1)
+
             r2 = await client.post(step1_url, data=step2_data)
             html2 = r2.text.lower()
             elapsed_ms = int((time.time() - t0) * 1000)
@@ -298,10 +309,11 @@ class FastPortalProber:
                     "elapsed_ms": elapsed_ms
                 }
             elif "ha superado el número de intentos" in html2 or "acceso restringido" in html2:
+                renew_tor_identity()
                 return {
                     "has_slots": False,
                     "status": "rate_limited",
-                    "message": "Rate limit / IP temporary cooloff",
+                    "message": "Rate limit / IP rotando nuevo circuito Tor",
                     "elapsed_ms": elapsed_ms
                 }
             elif "entrar" in html2 or "txtidcitado" in html2 or "cita" in html2 or "seleccione" in html2:
@@ -321,11 +333,10 @@ class FastPortalProber:
                 }
 
         except (httpx.ConnectTimeout, httpx.ReadTimeout, httpx.ProxyError, httpx.ConnectError, httpx.RemoteProtocolError):
-            renew_tor_identity()
             return {
                 "has_slots": False,
                 "status": "timeout",
-                "message": "Conexión rotando circuito español (Red SARA firewall)...",
+                "message": "Conexión en espera del servidor estatal (Red SARA)...",
                 "elapsed_ms": int((time.time() - t0) * 1000)
             }
         except httpx.HTTPError as e:
@@ -381,27 +392,52 @@ async def process_single_monitor(monitor: dict, prober: FastPortalProber, config
                 print(f"      ✅ Broadcast sent in {t_alert_ms}ms: {broadcast_res['status']}", flush=True)
                 alerted = True
 
-            # Auto-trigger booking runner for the first waiting client
+            # Auto-trigger booking runner for the first waiting client matching province and procedure
             if config.get("auto_booking_enabled", True):
                 try:
                     with get_db() as db_conn:
                         cur = db_conn.cursor()
+                        # Prefer client matching province and procedure keywords
                         cur.execute(
                             """
                             SELECT order_id, name, doc_number FROM orders 
-                            WHERE status = 'waiting' AND LOWER(province) = LOWER(?)
+                            WHERE status = 'waiting' 
+                              AND LOWER(province) = LOWER(?)
+                              AND (
+                                  LOWER(procedure) LIKE LOWER(?) 
+                                  OR LOWER(?) LIKE LOWER(procedure)
+                                  OR (LOWER(procedure) LIKE '%huella%' AND LOWER(?) LIKE '%huella%')
+                                  OR (LOWER(procedure) LIKE '%recogida%' AND LOWER(?) LIKE '%recogida%')
+                                  OR (LOWER(procedure) LIKE '%asilo%' AND LOWER(?) LIKE '%asilo%')
+                              )
                             ORDER BY id ASC LIMIT 1
                             """,
-                            (province,)
+                            (province, f"%{procedure}%", procedure, procedure, procedure, procedure)
                         )
                         queued_client = cur.fetchone()
+                        if not queued_client:
+                            cur.execute(
+                                """
+                                SELECT order_id, name, doc_number FROM orders 
+                                WHERE status = 'waiting' AND LOWER(province) = LOWER(?)
+                                ORDER BY id ASC LIMIT 1
+                                """,
+                                (province,)
+                            )
+                            queued_client = cur.fetchone()
+
                         if queued_client:
                             q_id = queued_client["order_id"]
                             q_name = queued_client["name"]
                             print(f"      🚀 Auto-Launching Auto-Booker for queued client: {q_name} ({q_id})...", flush=True)
                             python_bin = get_python_bin()
                             booker_script = BASE_DIR / "auto_booker.py"
-                            subprocess.Popen([python_bin, str(booker_script), "--order-id", q_id])
+                            cmd = [python_bin, str(booker_script), "--order-id", q_id]
+                            is_linux = sys.platform.startswith("linux")
+                            has_display = bool(os.environ.get("DISPLAY"))
+                            if is_linux and not has_display:
+                                cmd.append("--headless")
+                            subprocess.Popen(cmd)
                 except Exception as e:
                     print(f"      [Auto-booking trigger failed]: {e}", flush=True)
 
