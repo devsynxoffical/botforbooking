@@ -1273,10 +1273,13 @@ def intake_page():
                             <input type="text" id="customProvinceInput" placeholder="✍️ Especificar provincia..." style="margin-top: 0.4rem; display: none;">
                         </div>
                         <div>
-                            <label>2. Oficina / Comisaría (Police Station) *</label>
+                            <label>2. Oficina / Comisaría (Police Station)</label>
                             <select id="officeSelect" onchange="onOfficeChanged(this.value)">
                             </select>
                             <input type="text" id="customOfficeInput" placeholder="✍️ Especificar comisaría..." style="margin-top: 0.4rem; display: none;">
+                            <small style="color: #64748b; font-size: 0.76rem; display: block; margin-top: 0.25rem;">
+                                💡 En la web oficial de Barcelona/Madrid la oficina no se elige aquí: se asigna al abrirse las citas. Recomendado: <b>Cualquier oficina</b> para máxima rapidez.
+                            </small>
                         </div>
                     </div>
 
@@ -3081,9 +3084,15 @@ def admin_page():
                     const officesList = document.getElementById('inspectOfficesList');
                     const officesBadge = document.getElementById('inspectOfficesCountBadge');
                     const offices = s2.offices || [];
-                    officesBadge.textContent = `${offices.length} Offices`;
+                    officesBadge.textContent = offices.length > 0 ? `${offices.length} Offices` : "Centralized (0)";
                     if (offices.length === 0) {
-                        officesList.innerHTML = '<div style="color: #94a3b8; padding: 0.5rem;">No offices found or single centralized office.</div>';
+                        officesList.innerHTML = `
+                            <div style="color: #475569; padding: 0.6rem; background: #fffbeb; border-radius: 6px; border: 1px solid #fef08a; font-size: 0.78rem; line-height: 1.4;">
+                                <strong>ℹ️ Centralized Allocation (Standard for Barcelona & Madrid):</strong><br>
+                                The Spanish Government portal deliberately has <b>no office selector</b> on the entry page for ${data.target_province || 'Barcelona'}. 
+                                The Ministry pools all comisarías centrally. Specific offices (e.g. Mallorca 213, Badalona, etc.) only appear in the final calendar grid when appointment slots are opened.
+                            </div>
+                        `;
                     } else {
                         officesList.innerHTML = offices.map(o => `
                             <div style="padding: 0.35rem 0.5rem; border-bottom: 1px solid #e2e8f0; display: flex; justify-content: space-between; align-items: center;">
