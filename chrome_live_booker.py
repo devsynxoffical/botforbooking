@@ -256,7 +256,14 @@ def execute_step(order: dict):
         return "slot_claimed"
 
     if st.get("isNoSlots"):
-        print("ℹ️ No appointment slots currently open for this procedure.")
+        print("ℹ️ No appointment slots currently open. Clicking Aceptar to cycle...")
+        js = """
+        (function() {
+            var btn = document.getElementById("btnSubmit") || document.querySelector("input[value=Aceptar]");
+            if (btn) btn.click();
+        })();
+        """
+        run_js(js)
         return "no_slots"
 
     if st.get("isOTP"):
@@ -294,16 +301,26 @@ def main():
         return
 
     print("🔄 Running continuous step execution loop...")
+    attempt_count = 0
     while True:
         res = execute_step(order)
-        print(f"Step Result: {res}")
+        print(f"[{time.strftime('%H:%M:%S')}] Step Result: {res}")
         if res in ["slot_claimed", "otp_pending"]:
             print("🎉 Success! Reached final booking / OTP stage.")
             break
+        elif res == "no_slots":
+            attempt_count += 1
+            print(f"⏳ Attempt #{attempt_count} complete (no slots). Cooldown 15s to keep Spanish IP safe...")
+            for s in range(15, 0, -1):
+                sys.stdout.write(f"\rNext check in {s}s... ")
+                sys.stdout.flush()
+                time.sleep(1)
+            print("")
         elif res == "rate_limited":
-            time.sleep(4)
+            print("⚠️ Rate limit detected. Waiting 30s. If this persists, toggle Urban VPN.")
+            time.sleep(30)
         else:
-            time.sleep(2)
+            time.sleep(2.5)
 
 
 if __name__ == "__main__":
