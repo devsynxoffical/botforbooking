@@ -64,8 +64,8 @@ def get_tab_status() -> Dict[str, Any]:
             title: document.title,
             body: document.body ? document.body.innerText.substring(0, 500) : "",
             is429: document.title.includes("429") || (document.body && document.body.innerText.includes("Too Many Requests")),
-            isIndex: !!(document.getElementById("form") || document.querySelector("select[name=sede]")),
             isProcedures: !!(document.getElementById("tramiteGrupo[0]") || document.getElementById("tramiteGrupo[1]") || document.querySelector("select[name*=tramite]")),
+            isIndex: (location.href.includes("index") || !document.getElementById("tramiteGrupo[0]")) && !!(document.getElementById("form") || document.querySelector("select#form")),
             isInstructions: !!(document.getElementById("btnEntrar") || document.querySelector("input[value=Entrar]")),
             isIdentity: !!(document.getElementById("txtIdCitado") && document.getElementById("txtDesCitado")),
             isAction: !!(document.querySelector("input[value='Solicitar Cita']") || (document.body && document.body.innerText.includes("Solicitar Cita"))),
@@ -133,9 +133,26 @@ def execute_step(order: dict):
     # Step 2: Procedure Selection
     if st.get("isProcedures"):
         proc = order.get("procedure", "TOMA DE HUELLA")
-        print(f"📋 Selecting Procedure: {proc}...")
+        office = order.get("office", "")
+        print(f"📋 Selecting Office ({office or 'Any'}) & Procedure ({proc})...")
         js = """
         (function() {
+            var sedeSel = document.getElementById("sede");
+            if (sedeSel) {
+                var foundSede = false;
+                var offTarget = "__OFFICE__".toUpperCase();
+                if (offTarget && offTarget !== "ANY") {
+                    for (var sOpt of sedeSel.options) {
+                        if (sOpt.text.toUpperCase().includes(offTarget) || offTarget.includes(sOpt.text.toUpperCase())) {
+                            sedeSel.value = sOpt.value;
+                            foundSede = true;
+                            break;
+                        }
+                    }
+                }
+                if (!foundSede) sedeSel.value = "99";
+            }
+
             var procSels = Array.from(document.querySelectorAll("select[name*=tramite], select[id*=tramite]"));
             var target = "__PROC__";
             for (var sel of procSels) {
@@ -153,7 +170,7 @@ def execute_step(order: dict):
             }
             return false;
         })();
-        """.replace("__PROC__", proc.upper())
+        """.replace("__PROC__", proc.upper()).replace("__OFFICE__", (office or "ANY").upper())
         run_js(js)
         return "procedure_submitted"
 
