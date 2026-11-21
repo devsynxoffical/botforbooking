@@ -108,14 +108,32 @@ def get_otp_from_queue_or_file(order_id: str, timeout_seconds: int = 240) -> Opt
     return None
 
 
-def run_auto_booking(order_id: str, headless: bool = False) -> Dict[str, Any]:
-    with get_db() as conn:
-        cur = conn.cursor()
-        cur.execute("SELECT * FROM orders WHERE order_id = ?", (order_id.upper(),))
-        order = cur.fetchone()
-        if not order:
-            return {"status": "error", "message": f"Order {order_id} not found in database"}
-        order = dict(order)
+def run_auto_booking(order_id: str, headless: bool = False, cdp_url: Optional[str] = None) -> Dict[str, Any]:
+    order = None
+    try:
+        with get_db() as conn:
+            cur = conn.cursor()
+            cur.execute("SELECT * FROM orders WHERE order_id = ?", (order_id.upper(),))
+            row = cur.fetchone()
+            if row:
+                order = dict(row)
+    except Exception:
+        pass
+
+    if not order:
+        # Fallback to live Railway queue
+        try:
+            import urllib.request
+            req = urllib.request.urlopen(f"https://web-production-2bcf4.up.railway.app/api/orders/{order_id.upper()}", timeout=8)
+            data = json.loads(req.read().decode())
+            if data and data.get("order_id"):
+                order = data
+                print(f" Cloud order fetched from Railway: {order['order_id']} ({order.get('name')})")
+        except Exception as e:
+            print(f"⚠️ Could not fetch from cloud queue: {e}")
+
+    if not order:
+        return {"status": "error", "message": f"Order {order_id} not found in database or cloud queue"}
 
     config = load_config()
     portal_url = config.get("portal_url", DEFAULT_PORTAL_URL)
@@ -186,21 +204,29 @@ def run_auto_booking(order_id: str, headless: bool = False) -> Dict[str, Any]:
     effective_headless = True if (is_linux and not has_display) else headless
 
     with sync_playwright() as p:
-        # Launch browser
-        browser = p.chromium.launch(
-            headless=effective_headless,
-            args=["--start-maximized", "--disable-blink-features=AutomationControlled", "--no-sandbox", "--disable-setuid-sandbox"],
-            proxy=proxy_config
-        )
-        context_args = {
-            "no_viewport": True,
-            "user_agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36"
-        }
-        if client_certs:
-            context_args["client_certificates"] = client_certs
+        is_cdp = bool(cdp_url)
+        if is_cdp:
+            print(f"🔌 Connecting to running Google Chrome via CDP ({cdp_url})...")
+            browser = p.chromium.connect_over_cdp(cdp_url)
+            context = browser.contexts[0] if browser.contexts else browser.new_context()
+            page = context.pages[0] if context.pages else context.new_page()
+            print(" Connected to Chrome! Operating through active browser session & Urban VPN...")
+        else:
+            # Launch browser
+            browser = p.chromium.launch(
+                headless=effective_headless,
+                args=["--start-maximized", "--disable-blink-features=AutomationControlled", "--no-sandbox", "--disable-setuid-sandbox"],
+                proxy=proxy_config
+            )
+            context_args = {
+                "no_viewport": True,
+                "user_agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36"
+            }
+            if client_certs:
+                context_args["client_certificates"] = client_certs
 
-        context = browser.new_context(**context_args)
-        page = context.new_page()
+            context = browser.new_context(**context_args)
+            page = context.new_page()
 
         try:
             # Step 1: Open Portal
@@ -632,20 +658,27 @@ def run_auto_booking(order_id: str, headless: bool = False) -> Dict[str, Any]:
                         )
                         broadcast_telegram_message(bot_token, chat_id, conf_msg)
 
-                    browser.close()
+                    if not is_cdp:
+                        browser.close()
+                    else:
+                        print("✨ Booking complete. Leaving Chrome open for verification.")
                     return {"status": "booked", "order_id": order_id, "receipt": str(receipt_path), "date": date_val}
                 else:
                     print("⚠️ Code entered but confirmation page was not clearly detected. Check screenshot.")
                     update_order_status(order_id, "code_pending", "Código enviado, revise el navegador.")
 
-            print("Closing browser. Process complete.")
-            browser.close()
+            if not is_cdp:
+                print("Closing browser. Process complete.")
+                browser.close()
+            else:
+                print("✨ Finished auto-book attempt. Leaving Chrome open.")
             return {"status": "finished", "order_id": order_id}
 
         except Exception as e:
             print(f"Error during auto booking: {e}")
             update_order_status(order_id, "waiting", f"Error en ejecución: {str(e)[:80]}. Reintentando...")
-            browser.close()
+            if not is_cdp:
+                browser.close()
             return {"status": "error", "message": str(e)}
 
 
@@ -669,6 +702,19 @@ def trigger_next_waiting_order(province: str, procedure: str) -> Optional[dict]:
             order_id = order_data["order_id"]
             print(f"🎯 Found queued client for {province}: {order_data['name']} ({order_id})")
             return order_data
+
+    # Fallback to Railway queue
+    try:
+        import urllib.request
+        req = urllib.request.urlopen("https://web-production-2bcf4.up.railway.app/api/orders?status=waiting", timeout=8)
+        data = json.loads(req.read().decode())
+        for o in data.get("orders", []):
+            if province.lower() in (o.get("province") or "").lower():
+                print(f"🎯 Found queued client on Railway for {province}: {o['name']} ({o['order_id']})")
+                return o
+    except Exception as e:
+        print(f"⚠️ Could not query cloud queue: {e}")
+
     return None
 
 
@@ -677,10 +723,11 @@ def main():
     parser.add_argument("--order-id", type=str, help="Order ID to process (e.g. ORDER-514792)")
     parser.add_argument("--auto-pick", nargs=2, metavar=("PROVINCE", "PROCEDURE"), help="Automatically pick next waiting order for province")
     parser.add_argument("--headless", action="store_true", help="Run browser in headless mode")
+    parser.add_argument("--cdp", nargs="?", const="http://127.0.0.1:9222", default=None, help="Connect to running Chrome browser via CDP (e.g. http://127.0.0.1:9222)")
     args = parser.parse_args()
 
     if args.order_id:
-        res = run_auto_booking(args.order_id, headless=args.headless)
+        res = run_auto_booking(args.order_id, headless=args.headless, cdp_url=args.cdp)
         print("Result:", json.dumps(res, indent=2))
         return
 
@@ -688,14 +735,14 @@ def main():
         prov, proc = args.auto_pick
         order = trigger_next_waiting_order(prov, proc)
         if order:
-            res = run_auto_booking(order["order_id"], headless=args.headless)
+            res = run_auto_booking(order["order_id"], headless=args.headless, cdp_url=args.cdp)
             print("Result:", json.dumps(res, indent=2))
         else:
-            print(f"No clients currently waiting for {prov} in orders.db.")
+            print(f"No clients currently waiting for {prov}.")
         return
 
-    print("Usage: python auto_booker.py --order-id ORDER-123456 [--headless]")
-    print("       python auto_booker.py --auto-pick 'Barcelona' 'POLICIA-TOMA DE HUELLA'")
+    print("Usage: python auto_booker.py --order-id ORDER-123456 [--cdp [URL]] [--headless]")
+    print("       python auto_booker.py --auto-pick 'Barcelona' 'POLICIA-TOMA DE HUELLA' [--cdp]")
 
 
 if __name__ == "__main__":
