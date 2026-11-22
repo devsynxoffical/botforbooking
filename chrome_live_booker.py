@@ -43,14 +43,27 @@ def run_js(js_code: str) -> Optional[str]:
 def navigate_tab(url: str):
     apple_script = f'''
     tell application "Google Chrome"
+        set found to false
         repeat with w in windows
             repeat with t in tabs of w
                 if URL of t contains "icp.administracionelectronica.gob.es" then
                     set URL of t to "{url}"
+                    set found to true
                     return "ok"
                 end if
             end repeat
         end repeat
+        if not found then
+            if (count of windows) > 0 then
+                tell front window
+                    make new tab with properties {{URL: "{url}"}}
+                end tell
+            else
+                make new window
+                set URL of active tab of front window to "{url}"
+            end if
+            return "opened_new"
+        end if
     end tell
     '''
     subprocess.run(["osascript", "-e", apple_script], capture_output=True)
@@ -70,7 +83,11 @@ def get_tab_status() -> Dict[str, Any]:
             isIdentity: !!(document.getElementById("txtIdCitado") && document.getElementById("txtDesCitado")),
             isAction: !!(document.querySelector("input[value='Solicitar Cita']") || (document.body && document.body.innerText.includes("Solicitar Cita"))),
             isContact: !!(document.getElementById("txtTelefonoCitado") || document.getElementById("emailCMP")),
-            isNoSlots: document.body ? document.body.innerText.includes("En este momento no hay citas disponibles") : false,
+            isNoSlots: (document.body && (
+                document.body.innerText.toLowerCase().includes("no hay citas") ||
+                document.body.innerText.toLowerCase().includes("no appointments") ||
+                (location.href.includes("acCitar") && !document.querySelector("input[type=radio]"))
+            )) || false,
             hasSlotRadio: !!document.querySelector("input[type=radio][name*=cita], input[type=radio][name*=idCita]"),
             isOTP: !!(document.getElementById("txtCodigoVerificacion") || (document.body && document.body.innerText.includes("SMS")))
         });

@@ -50,14 +50,27 @@ def run_js(js_code: str) -> Optional[str]:
 def navigate_tab(url: str):
     apple_script = f'''
     tell application "Google Chrome"
+        set found to false
         repeat with w in windows
             repeat with t in tabs of w
                 if URL of t contains "icp.administracionelectronica.gob.es" then
                     set URL of t to "{url}"
+                    set found to true
                     return "ok"
                 end if
             end repeat
         end repeat
+        if not found then
+            if (count of windows) > 0 then
+                tell front window
+                    make new tab with properties {{URL: "{url}"}}
+                end tell
+            else
+                make new window
+                set URL of active tab of front window to "{url}"
+            end if
+            return "opened_new"
+        end if
     end tell
     '''
     subprocess.run(["osascript", "-e", apple_script], capture_output=True)
@@ -71,13 +84,18 @@ def get_tab_status() -> Dict[str, Any]:
             title: document.title,
             body: document.body ? document.body.innerText.substring(0, 500) : "",
             is429: document.title.includes("429") || (document.body && document.body.innerText.includes("Too Many Requests")),
+            isRejected: document.title.includes("Rejected") || (document.body && document.body.innerText.includes("requested URL was rejected")),
             isProcedures: !!(document.getElementById("tramiteGrupo[0]") || document.getElementById("tramiteGrupo[1]") || document.querySelector("select[name*=tramite]")),
             isIndex: (location.href.includes("index") || !document.getElementById("tramiteGrupo[0]")) && !!(document.getElementById("form") || document.querySelector("select#form")),
             isInstructions: !!(document.getElementById("btnEntrar") || document.querySelector("input[value=Entrar]")),
             isIdentity: !!(document.getElementById("txtIdCitado") && document.getElementById("txtDesCitado")),
-            isAction: !!(document.querySelector("input[value='Solicitar Cita']") || (document.body && document.body.innerText.includes("Solicitar Cita"))),
+            isAction: location.href.includes("acValidarEntrada") || !!document.getElementById("btnConsultar") || !!(document.querySelector("input[value*='Solicitar Cita' i]") || document.querySelector("input[value*='Appointment' i]")),
             isContact: !!(document.getElementById("txtTelefonoCitado") || document.getElementById("emailCMP")),
-            isNoSlots: document.body ? document.body.innerText.includes("En este momento no hay citas disponibles") : false,
+            isNoSlots: (document.body && (
+                document.body.innerText.toLowerCase().includes("no hay citas") ||
+                document.body.innerText.toLowerCase().includes("no appointments") ||
+                (location.href.includes("acCitar") && !document.querySelector("input[type=radio]"))
+            )) || false,
             hasSlotRadio: !!document.querySelector("input[type=radio][name*=cita], input[type=radio][name*=idCita]"),
             isOTP: !!(document.getElementById("txtCodigoVerificacion") || (document.body && document.body.innerText.includes("SMS"))),
             isConfirmed: document.body ? (document.body.innerText.includes("Cita Confirmada") || document.body.innerText.includes("Justificante de Cita")) : false
@@ -175,12 +193,33 @@ def poll_otp_from_cloud(order_id: str, timeout_sec: int = 180) -> Optional[str]:
     return None
 
 
+def reset_clean_session():
+    js = """
+    (function() {
+        document.cookie.split(';').forEach(function(c) {
+            document.cookie = c.replace(/^ +/, '').replace(/=.*/, '=;expires=' + new Date().toUTCString() + ';path=/');
+        });
+        sessionStorage.clear();
+        localStorage.clear();
+        location.href = 'https://icp.administracionelectronica.gob.es/icpplus/index.html';
+        return "ok";
+    })();
+    """
+    run_js(js)
+
+
 def execute_booking_step(order: dict) -> str:
     st = get_tab_status()
     if st.get("error") == "tab_not_found":
         log("❌ Extranjería tab not found in Chrome! Navigating front tab...")
         navigate_tab("https://icp.administracionelectronica.gob.es/icpplus/index.html")
         return "reloaded"
+
+    if st.get("isRejected"):
+        log("⚠️ [Request Rejected] Red SARA WAF detected stale session. Clearing cookies & resetting...")
+        reset_clean_session()
+        time.sleep(3)
+        return "session_cleared"
 
     if st.get("is429"):
         log("⚠️ [429 RATE LIMIT] Red SARA is rate-limiting this IP.")
@@ -306,7 +345,7 @@ def execute_booking_step(order: dict) -> str:
         log("🎯 Action page: Clicking 'Solicitar Cita'...")
         js = """
         (function() {
-            var btn = document.getElementById("btnEnviar") || document.querySelector("input[value='Solicitar Cita']");
+            var btn = document.getElementById("btnEnviar") || document.querySelector("input[value*='Solicitar' i]") || document.querySelector("input[value*='Appointment' i]");
             if (btn) btn.click();
         })();
         """
@@ -392,9 +431,9 @@ def run_full_auto_loop():
             log(f"🎯 Processing Client: {name} ({order_id})")
             log(f"   Province: {order.get('province')} | Trámite: {order.get('procedure')[:35]}")
 
-            # Reset tab to index.html for clean session start
-            navigate_tab("https://icp.administracionelectronica.gob.es/icpplus/index.html")
-            time.sleep(3)
+            # Reset tab to index.html with clean cookies and fresh session
+            reset_clean_session()
+            time.sleep(3.5)
 
             # Advance through steps for this client
             step_attempts = 0
